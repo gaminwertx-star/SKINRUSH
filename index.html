@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SKINRUSH — Keyslar</title>
+  <meta name="description" content="SKINRUSH — CS2 keyslarini oching, skinlar yutib oling va inventaringizni to'ldiring." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=19" />
+</head>
+<body>
+  <!-- TOP DROPS STRIP -->
+  <div class="live-strip">
+    <div class="live-strip__labels">
+      <span class="live-strip__label live-strip__label--top">TOP</span>
+      <span class="live-strip__label">DROPS</span>
+    </div>
+    <div class="live-strip__viewport">
+      <div class="live-strip__track" id="topTrack"></div>
+    </div>
+  </div>
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header__inner">
+      <div class="header__left">
+        <a href="#" class="logo"><img class="logo-img" src="images/logo.png" alt="SKINRUSH" /></a>
+        <div class="online">
+          <span class="online__dot"></span>
+          <span class="online__label" data-i18n="online">online</span>
+          <span class="online__count" id="onlineCount">1 284</span>
+        </div>
+      </div>
+      <div class="header__right">
+        <div class="lang-wrap">
+          <button class="lang" id="langBtn" aria-haspopup="true" aria-expanded="false">
+            <span class="lang__flag" id="langFlag"></span>
+            <span class="lang__code" id="langLabel">UZ</span>
+            <span class="lang__caret" aria-hidden="true"><svg viewBox="0 0 12 8"><path d="M1 1.5 6 6.5 11 1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          </button>
+          <div class="lang-menu" id="langMenu" hidden></div>
+        </div>
+        <button class="btn btn--login" id="loginBtn" data-i18n="login">Kirish</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- NAV -->
+  <nav class="nav">
+    <div class="nav__inner" id="nav">
+      <button class="nav__item is-active" data-tab="bonuslar" data-i18n="nav_bonuslar">BONUSLAR</button>
+      <button class="nav__item" data-tab="keyslar" data-i18n="nav_keyslar">KEYSLAR</button>
+      <button class="nav__item" data-tab="janglar" data-i18n="nav_janglar">KEYS JANGLAR</button>
+      <button class="nav__item" data-tab="kontraktlar" data-i18n="nav_kontraktlar">KONTRAKTLAR</button>
+      <button class="nav__item" data-tab="yaxshilash" data-i18n="nav_yaxshilash">YAXSHILASH</button>
+      <button class="nav__item" data-tab="dokon" data-i18n="nav_dokon">DO'KON</button>
+      <button class="nav__item" data-tab="inventar" data-i18n="nav_inventar">INVENTAR</button>
+      <button class="nav__item" data-tab="dostlar" data-i18n="nav_dostlar">DO'STLAR</button>
+    </div>
+  </nav>
+
+  <main class="container">
+    <!-- DAILY REWARD + TASKS -->
+    <section class="promo-grid" id="bonuslar">
+      <div class="panel daily">
+        <div class="panel__head">
+          <img class="panel__icon" src="images/icons/gift.png" alt="" />
+          <div>
+            <h2 class="panel__title" data-i18n="daily_title">Kunlik sovg'a</h2>
+            <p class="panel__sub" data-i18n="daily_sub">Har kuni saytga kiring va bepul coin oling!</p>
+          </div>
+        </div>
+        <div class="days" id="daysRow"></div>
+        <div class="daily__foot">
+          <div class="daily__timer"><span data-i18n="daily_next">Keyingi sovg'a:</span> <b id="dailyTimer">15:47:32</b></div>
+          <button class="btn btn--teal daily__claim" id="dailyClaim" data-i18n="daily_claim">Oling</button>
+        </div>
+      </div>
+
+      <div class="panel tasks">
+        <div class="panel__head">
+          <div class="panel__icon panel__icon--svg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12l2 2 4-4"/></svg></div>
+          <div>
+            <h2 class="panel__title" data-i18n="tasks_title">Topshiriqlar</h2>
+            <p class="panel__sub" data-i18n="tasks_sub">Topshiriqlarni bajaring va ko'proq coin yutib oling!</p>
+          </div>
+        </div>
+        <div class="task-list" id="taskList"></div>
+        <button class="tasks__all" id="tasksAll" data-i18n="tasks_all">Barcha topshiriqlar ›</button>
+      </div>
+    </section>
+
+    <!-- USER STATS -->
+    <section class="stats stats--user">
+      <div class="stat stat--icon">
+        <span class="stat__badge stat__badge--gold"><img class="stat__ic" src="images/coin.png" alt="" /></span>
+        <div class="stat__body">
+          <div class="stat__num grad-gold" data-count="12540">0</div>
+          <div class="stat__label" data-i18n="stat_coin">Mening coinim</div>
+        </div>
+      </div>
+      <div class="stat stat--icon">
+        <span class="stat__badge stat__badge--violet"><img class="stat__ic" src="images/icons/calendar.png" alt="" /></span>
+        <div class="stat__body">
+          <div class="stat__num grad-violet" data-count="3">0</div>
+          <div class="stat__label" data-i18n="stat_streak">Ketma-ket kunlar</div>
+        </div>
+      </div>
+      <div class="stat stat--icon">
+        <span class="stat__badge stat__badge--blue"><img class="stat__ic" src="images/icons/people.png" alt="" /></span>
+        <div class="stat__body">
+          <div class="stat__num grad-blue" data-count="12">0</div>
+          <div class="stat__label" data-i18n="stat_invited">Taklif qilingan do'stlar</div>
+        </div>
+      </div>
+      <div class="stat stat--icon">
+        <span class="stat__badge stat__badge--green"><img class="stat__ic" src="images/icons/trophy.png" alt="" /></span>
+        <div class="stat__body">
+          <div class="stat__num grad-green" data-count="1250">0</div>
+          <div class="stat__label" data-i18n="stat_won">Jami yutgan coin</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CASES -->
+    <section class="cases-section">
+      <div class="cases-head">
+        <h2 class="section-title" data-i18n="cases_title">Keyslar</h2>
+        <div class="cases-search">
+          <input type="text" id="caseSearch" data-i18n-ph="search_ph" placeholder="Key qidirish..." />
+          <input type="number" id="caseMin" class="cases-price" data-i18n-ph="min_ph" placeholder="Min narx" min="0" />
+          <input type="number" id="caseMax" class="cases-price" data-i18n-ph="max_ph" placeholder="Max narx" min="0" />
+        </div>
+      </div>
+      <div class="cases-grid" id="casesGrid"></div>
+    </section>
+
+    <!-- UPGRADE -->
+    <section class="upgrade" id="upgradeView" hidden>
+      <div class="cases-head">
+        <h2 class="section-title" data-i18n="upg_title">Upgrade — skinni yaxshilash</h2>
+      </div>
+
+      <div class="upg-stage">
+        <div class="upg-side">
+          <div class="upg-side__label" data-i18n="upg_your">Sizning narsangiz</div>
+          <div class="upg-slot" id="upgFromSlot">
+            <div class="upg-slot__empty" data-i18n="upg_pick_inv">Inventardan tanlang</div>
+          </div>
+        </div>
+
+        <div class="upg-wheel">
+          <svg class="upg-wheel__svg" viewBox="0 0 220 220">
+            <circle class="upg-ring__bg" cx="110" cy="110" r="96" />
+            <circle class="upg-ring__win" id="upgArc" cx="110" cy="110" r="96"
+                    transform="rotate(-90 110 110)" />
+          </svg>
+          <div class="upg-wheel__pointer" id="upgPointer"></div>
+          <div class="upg-wheel__center">
+            <div class="upg-wheel__chance" id="upgChance">—</div>
+            <div class="upg-wheel__mult" id="upgMult" data-i18n="upg_pick_target_hint">nishonni tanlang</div>
+          </div>
+        </div>
+
+        <div class="upg-side">
+          <div class="upg-side__label" data-i18n="upg_target">Nishon</div>
+          <div class="upg-slot" id="upgToSlot">
+            <div class="upg-slot__empty" data-i18n="upg_pick_target">Nishonni tanlang</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="upg-actions">
+        <button class="btn btn--teal" id="upgBtn" disabled data-i18n="upg_btn">Upgrade</button>
+        <div class="upg-result" id="upgResult"></div>
+      </div>
+
+      <div class="upg-pick">
+        <div class="upg-pick__col">
+          <div class="upg-pick__title" data-i18n="upg_inv_title">Inventaringiz</div>
+          <div class="upg-pick__grid" id="upgInv"></div>
+        </div>
+        <div class="upg-pick__col">
+          <div class="upg-pick__title">
+            <span data-i18n="upg_pick_target">Nishonni tanlang</span>
+            <input type="text" id="upgSearch" data-i18n-ph="upg_search_ph" placeholder="skin qidirish..." />
+          </div>
+          <div class="upg-pick__grid" id="upgTargets"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CASE VIEW (full page) -->
+    <section class="case-view" id="caseView" hidden>
+      <button class="case-view__back" data-back data-i18n="back">‹ Orqaga</button>
+      <div class="sound-ctl" id="soundToggle" role="switch" tabindex="0" title="Ovoz">
+        <span class="sound-ctl__label" data-i18n="sound">Ovozi</span>
+        <span class="switch"><span class="switch__knob"></span></span>
+      </div>
+
+      <div class="case-hero" id="caseHero">
+        <div class="case-hero__art">
+          <img class="case-hero__crate" id="modalCrate" alt="" />
+        </div>
+        <div class="case-hero__panel">
+          <h2 class="case-hero__title" id="modalCaseName">Key</h2>
+          <div class="case-hero__price"><span id="modalCasePrice">0</span> <img class="coin-img" src="images/coin.png" alt="coin" /></div>
+          <button class="case-hero__open" id="spinBtn" data-i18n="open_btn">Ochish</button>
+        </div>
+      </div>
+
+      <!-- PRO case-opening animation -->
+      <div class="opening" id="roulette" hidden>
+        <div class="opening__glow"></div>
+        <div class="opening__pointer opening__pointer--top"></div>
+        <div class="opening__pointer opening__pointer--bottom"></div>
+        <div class="opening__marker"></div>
+        <div class="opening__track" id="rouletteTrack"></div>
+      </div>
+
+      <div class="reveal-box" id="revealBox" hidden></div>
+      <div class="modal__result" id="modalResult"></div>
+      <div class="modal__actions" id="caseActions" hidden>
+        <button class="btn btn--teal" id="sellBtn" data-i18n="sell_btn">Sotish</button>
+        <button class="btn btn--outline" id="viewSkinBtn" data-i18n="view_btn">Ko'rish</button>
+      </div>
+
+      <div class="case-contents">
+        <div class="case-contents__title">
+          <span data-i18n="contents_title">Ushbu keydagi narsalar</span> <span class="case-contents__count" id="contentsCount"></span>
+        </div>
+        <div class="case-contents__grid" id="contentsGrid"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="footer__col">
+        <a href="#" class="logo logo--sm"><img class="logo-img" src="images/logo.png" alt="SKINRUSH" /></a>
+        <p class="footer__desc" data-i18n="footer_desc">CS2 keyslarini oching, noyob skinlarni yutib oling. Bu demo-loyiha — haqiqiy pul ishlatilmaydi.</p>
+      </div>
+      <div class="footer__col">
+        <h4 data-i18n="footer_pages">Sahifalar</h4>
+        <a href="#" data-i18n="footer_link_cases">Keyslar</a>
+        <a href="#" data-i18n="footer_link_contracts">Kontraktlar</a>
+        <a href="#" data-i18n="footer_link_shop">Do'kon</a>
+        <a href="#" data-i18n="footer_link_inventory">Inventar</a>
+      </div>
+      <div class="footer__col">
+        <h4 data-i18n="footer_help">Yordam</h4>
+        <a href="#" data-i18n="footer_faq">FAQ</a>
+        <a href="#" data-i18n="footer_support">Qo'llab-quvvatlash</a>
+        <a href="#" data-i18n="footer_terms">Foydalanish shartlari</a>
+      </div>
+      <div class="footer__col">
+        <h4 data-i18n="footer_18_title">18+</h4>
+        <p class="footer__desc footer__desc--sm" data-i18n="footer_18">Faqat 18 yoshdan oshgan foydalanuvchilar uchun. Mas'uliyat bilan o'ynang.</p>
+      </div>
+    </div>
+    <div class="footer__bottom" data-i18n="footer_bottom">© 2026 SKINRUSH. Barcha huquqlar himoyalangan. · Demo maqsadida yaratilgan.</div>
+  </footer>
+
+  <!-- SKIN DETAIL POPUP -->
+  <div class="skin-modal" id="skinModal" hidden>
+    <div class="skin-modal__backdrop" data-skinclose></div>
+    <div class="skin-modal__card" id="skinModalCard"></div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+
+  <!-- All data, game logic and translations come from the Django REST backend (/api/...). -->
+  <script src="app.js?v=21"></script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+Django>=5.0,<6.0
+djangorestframework>=3.15
+# PostgreSQL (used on the server via DATABASE_URL; SQLite is the local fallback)
+dj-database-url>=2.1
+psycopg[binary]>=3.1
+# Production web server + static file serving
+gunicorn>=21.2
+whitenoise>=6.6
