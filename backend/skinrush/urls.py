@@ -17,7 +17,8 @@ def index(request):
 
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    # Hidden admin panel — no link anywhere on the site; reached only via this URL.
+    path("adminpanel/", admin.site.urls),
     path("api/", include("api.urls")),
     path("", index, name="index"),
     # Any other path is a front-end asset (styles.css, app.js, images/...).

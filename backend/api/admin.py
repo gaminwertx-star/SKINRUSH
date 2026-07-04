@@ -3,6 +3,10 @@ from django.contrib import admin
 
 from .models import Case, CaseItem, Drop
 
+admin.site.site_header = "SKINRUSH — boshqaruv paneli"
+admin.site.site_title = "SKINRUSH admin"
+admin.site.index_title = "Boshqaruv"
+
 
 @admin.register(Case)
 class CaseAdmin(admin.ModelAdmin):

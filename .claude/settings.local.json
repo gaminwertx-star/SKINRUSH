@@ -52,7 +52,10 @@
       "Bash(python -c \"import whitenoise, dj_database_url; print\\('whitenoise', whitenoise.__version__\\); print\\('dj_database_url ok'\\)\")",
       "Bash(python manage.py collectstatic --noinput --dry-run)",
       "Bash(python -c \"import django; django.setup\\(\\); from django.conf import settings; print\\('DEBUG', settings.DEBUG, '| DB', settings.DATABASES['default']['ENGINE'].split\\('.'\\)[-1]\\)\")",
-      "Bash(DJANGO_SETTINGS_MODULE=skinrush.settings DEBUG=False SECRET_KEY=test-secret RENDER_EXTERNAL_HOSTNAME=skinrush.onrender.com DATABASE_URL=postgresql://u:p@somehost.neon.tech/db?sslmode=require python -c ' *)"
+      "Bash(DJANGO_SETTINGS_MODULE=skinrush.settings DEBUG=False SECRET_KEY=test-secret RENDER_EXTERNAL_HOSTNAME=skinrush.onrender.com DATABASE_URL=postgresql://u:p@somehost.neon.tech/db?sslmode=require python -c ' *)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('cases:', len\\(d\\), '| first:', d[0]['name'], d[0]['price']\\)\")",
+      "Bash(python -c \"import sys,json; print\\('lang:', json.load\\(sys.stdin\\)['lang']\\)\")",
+      "Bash(ADMIN_USERNAME=admin ADMIN_PASSWORD=test1234 python manage.py ensure_admin)"
     ]
   }
 }
