@@ -63,7 +63,10 @@
       "Bash(PYTHONIOENCODING=utf-8 python manage.py demo_users)",
       "Bash(python -c \"import sys,json; s=json.load\\(sys.stdin\\)['strings']; print\\('auth_not_ready:', s.get\\('auth_not_ready','YO_Q'\\)\\); print\\('auth_title:', s.get\\('auth_title','YO_Q'\\)\\)\")",
       "Bash(export TELEGRAM_BOT_TOKEN=\"8700636441:AAHFjW-qg6eeqNzROIx2S_oS-5TFakySTdY\")",
-      "Bash(export TELEGRAM_BOT_USERNAME=\"skin_rush_auth_bot\")"
+      "Bash(export TELEGRAM_BOT_USERNAME=\"skin_rush_auth_bot\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }

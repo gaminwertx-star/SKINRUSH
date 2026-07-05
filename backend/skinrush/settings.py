@@ -12,14 +12,16 @@ DEBUG = os.environ.get("DEBUG", "True") == "True"
 
 ALLOWED_HOSTS = [h for h in os.environ.get("ALLOWED_HOSTS", "*").split(",") if h]
 CSRF_TRUSTED_ORIGINS = [o for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",") if o]
-# Render exposes the public hostname here — trust it automatically.
-_render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
-if _render_host:
-    ALLOWED_HOSTS.append(_render_host)
-    CSRF_TRUSTED_ORIGINS.append(f"https://{_render_host}")
+# The host platform exposes the public hostname in an env var — trust it
+# automatically. Render uses RENDER_EXTERNAL_HOSTNAME, Railway RAILWAY_PUBLIC_DOMAIN.
+for _var in ("RENDER_EXTERNAL_HOSTNAME", "RAILWAY_PUBLIC_DOMAIN"):
+    _host = os.environ.get(_var)
+    if _host:
+        ALLOWED_HOSTS.append(_host)
+        CSRF_TRUSTED_ORIGINS.append(f"https://{_host}")
 
 if not DEBUG:
-    # Render terminates TLS at its proxy; trust the forwarded protocol.
+    # Render/Railway terminate TLS at their proxy; trust the forwarded protocol.
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 INSTALLED_APPS = [
@@ -77,8 +79,12 @@ _db_url = os.environ.get("DATABASE_URL")
 if _db_url:
     import dj_database_url
 
+    # Railway's internal Postgres (*.railway.internal) does NOT speak SSL, so
+    # forcing sslmode=require there breaks the connection. External hosts
+    # (Render, or Railway's public proxy) do require SSL. Detect and adapt.
+    _ssl_require = ".railway.internal" not in _db_url
     DATABASES["default"] = dj_database_url.parse(
-        _db_url, conn_max_age=600, ssl_require=True
+        _db_url, conn_max_age=600, ssl_require=_ssl_require
     )
 
 AUTH_PASSWORD_VALIDATORS = []
