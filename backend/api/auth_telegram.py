@@ -9,8 +9,10 @@ Django session. Set these env vars on the server:
 """
 import hashlib
 import hmac
+import json
 import os
 import time
+from urllib.parse import parse_qsl
 
 from django.contrib.auth import login, logout
 from django.contrib.auth.models import User
@@ -53,6 +55,43 @@ def verify_telegram(data):
     except (TypeError, ValueError):
         return False
     return True
+
+
+def verify_webapp(init_data):
+    """Validate a Telegram **Mini App** (WebApp) ``initData`` string.
+
+    Same idea as the Login Widget but the secret key is derived differently:
+    ``secret = HMAC_SHA256(key="WebAppData", msg=bot_token)``. Returns the parsed
+    user dict (id, first_name, username, photo_url, ...) on success, else None.
+    """
+    token = _token()
+    if not (token and init_data):
+        return None
+    try:
+        pairs = dict(parse_qsl(init_data, keep_blank_values=True, strict_parsing=True))
+    except ValueError:
+        return None
+    received = pairs.pop("hash", None)
+    if not received:
+        return None
+    check_string = "\n".join(f"{k}={pairs[k]}" for k in sorted(pairs))
+    secret = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
+    calc = hmac.new(secret, check_string.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(calc, received):
+        return None
+    # reject data older than 24h
+    try:
+        if time.time() - int(pairs.get("auth_date", 0)) > 86400:
+            return None
+    except (TypeError, ValueError):
+        return None
+    try:
+        user = json.loads(pairs.get("user", "{}"))
+    except ValueError:
+        return None
+    if not user.get("id"):
+        return None
+    return user
 
 
 def player_payload(p):

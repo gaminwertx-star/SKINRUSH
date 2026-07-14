@@ -57,6 +57,7 @@ urlpatterns = [
     path("profil/", pages.profile, name="profile"),
 
     # ---- auth ----
+    path("tg/webapp-login/", pages.webapp_login, name="webapp-login"),
     path("kirish/", pages.login_page, name="login"),
     path("royxat/", pages.register_page, name="register"),
     path("chiqish/", pages.logout_page, name="logout"),

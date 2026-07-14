@@ -178,6 +178,26 @@
     </a>
   </nav>
 
+  <!-- Telegram Mini App: auto-login from the Telegram profile when opened in-app -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+  (function () {
+    var tg = window.Telegram && window.Telegram.WebApp;
+    if (!tg || !tg.initData) return;          // not running inside Telegram
+    try { tg.ready(); tg.expand(); } catch (e) {}
+    {% if not ME.authenticated %}
+    fetch("{% url 'webapp-login' %}", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "initData=" + encodeURIComponent(tg.initData)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.ok) location.reload(); })
+      .catch(function () {});
+    {% endif %}
+  })();
+  </script>
+
   <script src="/sounds.js?v=2" defer></script>
   {% block scripts %}{% endblock %}
 </body>

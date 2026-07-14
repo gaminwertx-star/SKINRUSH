@@ -13,14 +13,16 @@ from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.db.models import Q
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from . import game, i18n
 from .auth_account import EMAIL_RE, USERNAME_RE, _norm_phone
-from .auth_telegram import current_player
+from .auth_telegram import current_player, verify_webapp
 from .templatetags.skinrush_extras import img as _img_url
 from .models import Battle, Case, CaseItem, Drop, OpenRecord, Player
 from .views import (
@@ -300,7 +302,7 @@ def claim(request):
     if not pw:
         return redirect("home")
     messages.success(request, f'"{pw["name"]}" inventarga qo\'shildi')
-    return redirect("inventory")
+    return redirect("case", slug=pw["case_slug"]) if pw.get("case_slug") else redirect("home")
 
 
 @require_POST
@@ -1047,6 +1049,36 @@ def logout_page(request):
     auth_logout(request)
     messages.info(request, i18n.t(i18n.get_lang(request), "toast_logout"))
     return redirect("home")
+
+
+@csrf_exempt
+@require_POST
+def webapp_login(request):
+    """Auto-login for the Telegram Mini App.
+
+    The front-end (base.html) posts ``initData`` that Telegram injected into the
+    WebApp. We verify its HMAC signature with the bot token (the signature *is*
+    the authentication), then create/refresh the Player and open a session.
+    """
+    user_data = verify_webapp(request.POST.get("initData") or "")
+    if not user_data:
+        return JsonResponse({"ok": False, "error": "invalid"}, status=400)
+
+    tg_id = int(user_data["id"])
+    player, _ = Player.objects.get_or_create(telegram_id=tg_id)
+    player.username = user_data.get("username", "") or player.username
+    player.first_name = user_data.get("first_name", "") or player.first_name
+    if user_data.get("photo_url"):
+        player.photo_url = user_data["photo_url"]
+    if player.user is None:
+        user, _ = User.objects.get_or_create(username=f"tg_{tg_id}")
+        player.user = user
+    player.save()
+
+    user = player.user
+    user.backend = "django.contrib.auth.backends.ModelBackend"
+    auth_login(request, user)
+    return JsonResponse({"ok": True})
 
 
 def set_lang(request, code):
