@@ -134,6 +134,33 @@ def admin_user_detail(request, pk):
     })
 
 
+@api_view(["POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_give_coins(request, pk):
+    """Give (or deduct) coins to a player — e.g. crediting someone who donated.
+    Records a CoinPurchase row so it shows in the player's coin history."""
+    p = Player.objects.filter(pk=pk).first()
+    if p is None:
+        return Response({"error": "Topilmadi"}, status=404)
+    try:
+        amount = int(request.data.get("amount"))
+    except (TypeError, ValueError):
+        amount = 0
+    if amount == 0:
+        return Response({"error": "Miqdorni kiriting"}, status=400)
+    note = (request.data.get("note") or "").strip() or "Admin tomonidan berildi"
+
+    p.balance += amount
+    if amount > 0:
+        p.coins_purchased += amount
+    p.balance = max(0, p.balance)   # never go negative
+    p.save(update_fields=["balance", "coins_purchased", "last_seen"])
+    CoinPurchase.objects.create(player=p, amount=amount, note=note)
+    return Response({"ok": True, "balance": p.balance,
+                     "coins_purchased": p.coins_purchased})
+
+
 @api_view(["GET"])
 @authentication_classes([CsrfExemptSession])
 @permission_classes([IsAdminUser])

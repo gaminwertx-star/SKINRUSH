@@ -19,6 +19,12 @@ for _var in ("RENDER_EXTERNAL_HOSTNAME", "RAILWAY_PUBLIC_DOMAIN"):
     if _host:
         ALLOWED_HOSTS.append(_host)
         CSRF_TRUSTED_ORIGINS.append(f"https://{_host}")
+# Fly.io exposes the app name; the public host is "<app>.fly.dev".
+_fly_app = os.environ.get("FLY_APP_NAME")
+if _fly_app:
+    _host = f"{_fly_app}.fly.dev"
+    ALLOWED_HOSTS.append(_host)
+    CSRF_TRUSTED_ORIGINS.append(f"https://{_host}")
 
 if not DEBUG:
     # Render/Railway terminate TLS at their proxy; trust the forwarded protocol.
@@ -59,6 +65,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "api.context_processors.site",
             ],
         },
     },

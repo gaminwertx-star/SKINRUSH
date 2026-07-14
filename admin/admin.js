@@ -19,9 +19,12 @@ const main = document.getElementById("main");
 
 // ---------- auth ----------
 async function boot() {
+  // Optimistically show the panel if we were logged in (no flash on refresh).
+  const cached = localStorage.getItem("sr_admin");
+  if (cached) showApp(cached);
   const me = await jget(`${API}/me/`).catch(() => ({ authenticated: false }));
-  if (me.authenticated) showApp(me.username);
-  else showLogin();
+  if (me.authenticated) { if (!cached) showApp(me.username); }
+  else { showLogin(); try { localStorage.removeItem("sr_admin"); } catch (_) {} }
 }
 
 function showLogin() {
@@ -32,6 +35,7 @@ function showApp(username) {
   loginView.hidden = true;
   appView.hidden = false;
   document.getElementById("whoami").textContent = username || "admin";
+  try { localStorage.setItem("sr_admin", username || "admin"); } catch (_) {}
   switchView("dashboard");
 }
 
@@ -57,6 +61,7 @@ loginForm.addEventListener("submit", async (e) => {
 
 document.getElementById("logoutBtn").addEventListener("click", async () => {
   await jpost(`${API}/logout/`);
+  try { localStorage.removeItem("sr_admin"); } catch (_) {}
   showLogin();
 });
 
@@ -187,6 +192,20 @@ async function renderUserDetail(id) {
       ${info.map(([k, v]) => `<div class="info-card"><div class="info-k">${k}</div><div class="info-v">${v}</div></div>`).join("")}
     </div>
 
+    <div class="give-box">
+      <div class="give-box__title">Coin berish (donat)</div>
+      <div class="give-box__sub">Foydalanuvchi balansiga coin qo'shing. Manfiy son yozsangiz — yechib olinadi.</div>
+      <div class="give-row">
+        <input class="admin-input" id="giveAmount" type="number" placeholder="Miqdor (masalan 1000)" />
+        <input class="admin-input" id="giveNote" placeholder="Izoh (ixtiyoriy)" />
+        <button class="admin-btn" id="giveBtn">Berish</button>
+      </div>
+      <div class="give-msg" id="giveMsg"></div>
+      <div class="give-quick">
+        ${[500, 1000, 5000, 10000].map((a) => `<button class="give-chip" data-amt="${a}">+${fmt(a)}</button>`).join("")}
+      </div>
+    </div>
+
     <div class="section-title">Keys ochish tarixi — qaysi keysdan nima tushgani</div>
     <div class="table-wrap"><div class="table-scroll"><table>
       <thead><tr><th>Sana</th><th>Key</th><th>Tushgan skin</th><th>Holati</th><th>Qiymati</th><th>Noyoblik</th><th>Sotilgan</th></tr></thead>
@@ -212,6 +231,32 @@ async function renderUserDetail(id) {
         <tbody>${d.purchases.map((p) => `<tr><td class="cell-muted">${dt(p.created_at)}</td><td class="coin">+${fmt(p.amount)}</td><td class="cell-muted">${esc(p.note || "—")}</td></tr>`).join("")}</tbody>
       </table></div></div>` : ""}`;
   document.getElementById("backBtn").addEventListener("click", () => switchView("users"));
+
+  // --- give coins (donation top-up) ---
+  const giveAmount = document.getElementById("giveAmount");
+  const giveNote = document.getElementById("giveNote");
+  const giveBtn = document.getElementById("giveBtn");
+  const giveMsg = document.getElementById("giveMsg");
+
+  async function giveCoins(amount) {
+    if (!amount) { giveMsg.className = "give-msg is-err"; giveMsg.textContent = "Miqdorni kiriting"; return; }
+    giveBtn.disabled = true;
+    const res = await jpost(`${API}/users/${id}/coins/`, { amount, note: giveNote.value.trim() });
+    giveBtn.disabled = false;
+    if (res.ok && res.data.ok) {
+      giveMsg.className = "give-msg is-ok";
+      giveMsg.textContent = `Bajarildi! Yangi balans: ${fmt(res.data.balance)} coin`;
+      setTimeout(() => renderUserDetail(id), 700);  // reload with fresh data
+    } else {
+      giveMsg.className = "give-msg is-err";
+      giveMsg.textContent = res.data.error || "Xatolik";
+    }
+  }
+
+  giveBtn.addEventListener("click", () => giveCoins(parseInt(giveAmount.value, 10)));
+  document.querySelectorAll(".give-chip").forEach((b) =>
+    b.addEventListener("click", () => { giveAmount.value = b.dataset.amt; giveCoins(+b.dataset.amt); })
+  );
 }
 
 // ---------- cases ----------

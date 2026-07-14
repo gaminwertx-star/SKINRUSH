@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}{{ S.nav_dokon }} — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="shop">
+  <!-- FILTER SIDEBAR -->
+  <form class="shop-side" method="get" action="{% url 'dokon' %}">
+    <div class="shop-side__head">{{ S.shop_filters }}</div>
+
+    <label class="shop-field">
+      <span class="shop-field__label">{{ S.shop_category }}</span>
+      <div class="shop-sel">
+        <select name="cat">
+          <option value="">{{ S.shop_all }}</option>
+          {% for o in cat_options %}<option value="{{ o.v }}" {% if o.v == cat %}selected{% endif %}>{{ o.label }}</option>{% endfor %}
+        </select>
+        <span class="shop-sel__caret"><svg viewBox="0 0 12 8"><path d="M1 1.5 6 6.5 11 1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      </div>
+    </label>
+
+    <label class="shop-field">
+      <span class="shop-field__label">{{ S.shop_rarity }}</span>
+      <div class="shop-sel">
+        <select name="rarity">
+          <option value="">{{ S.shop_all_rar }}</option>
+          {% for r in rarities %}<option value="{{ r }}" {% if r == rarity %}selected{% endif %}>{{ r }}</option>{% endfor %}
+        </select>
+        <span class="shop-sel__caret"><svg viewBox="0 0 12 8"><path d="M1 1.5 6 6.5 11 1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      </div>
+    </label>
+
+    <label class="shop-field">
+      <span class="shop-field__label">{{ S.shop_wear }}</span>
+      <div class="shop-sel">
+        <select name="wear">
+          <option value="">{{ S.shop_all }}</option>
+          {% for w in wears %}<option value="{{ w }}" {% if w == wear %}selected{% endif %}>{{ w }}</option>{% endfor %}
+        </select>
+        <span class="shop-sel__caret"><svg viewBox="0 0 12 8"><path d="M1 1.5 6 6.5 11 1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      </div>
+    </label>
+
+    <div class="shop-field">
+      <span class="shop-field__label">{{ S.shop_price }}</span>
+      <div class="shop-range">
+        <input type="number" name="min" value="{{ min }}" placeholder="{{ S.shop_min_ph }}" min="0" />
+        <span class="shop-range__dash">—</span>
+        <input type="number" name="max" value="{{ max }}" placeholder="{{ S.shop_max_ph }}" min="0" />
+      </div>
+    </div>
+
+    <label class="shop-toggle">
+      <input type="checkbox" name="st" value="1" {% if st %}checked{% endif %} />
+      <span class="shop-toggle__track"><span class="shop-toggle__dot"></span></span>
+      <span class="shop-toggle__label">{{ S.shop_stattrak }}</span>
+    </label>
+
+    <label class="shop-field">
+      <span class="shop-field__label">{{ S.shop_sort }}</span>
+      <div class="shop-sel">
+        <select name="sort">
+          {% for o in sort_options %}<option value="{{ o.v }}" {% if o.v == sort %}selected{% endif %}>{{ o.label }}</option>{% endfor %}
+        </select>
+        <span class="shop-sel__caret"><svg viewBox="0 0 12 8"><path d="M1 1.5 6 6.5 11 1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      </div>
+    </label>
+
+    <div class="shop-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" name="q" value="{{ q }}" placeholder="{{ S.shop_search_ph }}" />
+    </div>
+
+    <div class="shop-side__acts">
+      <a class="shop-reset" href="{% url 'dokon' %}">{{ S.shop_reset }}</a>
+      <button class="shop-apply" type="submit">{{ S.shop_apply }}</button>
+    </div>
+  </form>
+
+  <!-- CATALOG -->
+  <div class="shop-main">
+    {% if mode == 'groups' %}
+      {% for g in groups %}
+        <div class="shop-group">
+          <div class="shop-group__head">
+            <h2 class="shop-group__title">{{ g.label }}</h2>
+            <a class="shop-group__all" href="{% url 'dokon' %}?cat={{ g.cat }}">{{ S.shop_show_all }} <b>({{ g.count }})</b> ›</a>
+          </div>
+          <div class="shop-grid">
+            {% for c in g.cards %}{% include "shop_card.html" %}{% endfor %}
+          </div>
+        </div>
+      {% empty %}
+        <div class="ss-empty ss-empty--big"><div class="ss-soon">🛒</div><p>{{ S.shop_none }}</p></div>
+      {% endfor %}
+    {% else %}
+      <div class="shop-results">{{ total }}{{ S.shop_results|cut:'{n}' }}</div>
+      {% if cards %}
+        <div class="shop-grid">
+          {% for c in cards %}{% include "shop_card.html" %}{% endfor %}
+        </div>
+        {% if pages > 1 %}
+        <div class="shop-pager">
+          {% if has_prev %}<a class="shop-pager__btn" href="?{{ qs }}&amp;page={{ page|add:'-1' }}">‹ {{ S.shop_prev }}</a>{% else %}<span class="shop-pager__btn is-off">‹ {{ S.shop_prev }}</span>{% endif %}
+          <span class="shop-pager__now">{{ page }} / {{ pages }}</span>
+          {% if has_next %}<a class="shop-pager__btn" href="?{{ qs }}&amp;page={{ page|add:'1' }}">{{ S.shop_next }} ›</a>{% else %}<span class="shop-pager__btn is-off">{{ S.shop_next }} ›</span>{% endif %}
+        </div>
+        {% endif %}
+      {% else %}
+        <div class="ss-empty ss-empty--big"><div class="ss-soon">🔍</div><p>{{ S.shop_none }}</p>
+          <a class="btn btn--teal" href="{% url 'dokon' %}">{{ S.shop_reset }}</a></div>
+      {% endif %}
+    {% endif %}
+  </div>
+</section>
+
+{% endblock %}

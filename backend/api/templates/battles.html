@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}{{ S.nav_janglar }} — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="bt-page">
+  <aside class="bt-side">
+    <a class="bt-tab {% if tab == 'active' %}is-active{% endif %}" href="{% url 'battles' %}?tab=active">Faol</a>
+    <a class="bt-tab {% if tab == 'completed' %}is-active{% endif %}" href="{% url 'battles' %}?tab=completed">Tugallangan</a>
+    <a class="bt-tab {% if tab == 'my' %}is-active{% endif %}" href="{% url 'battles' %}?tab=my">Mening janglarim</a>
+    <a class="bt-create-btn" href="{% url 'battle-create' %}">Jang yaratish</a>
+  </aside>
+
+  <div class="bt-list">
+    {% for c in cards %}
+      <a class="bt-card" href="{% url 'battle' c.id %}">
+        <div class="bt-card__head">
+          <div class="bt-card__price">{{ c.price|fmt }} <img class="coin-img" src="/images/coin.png" alt="" /></div>
+          <div class="bt-card__rounds">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8l9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
+            {{ c.rounds }}
+          </div>
+        </div>
+
+        <div class="bt-card__cases">
+          {% for cs in c.cases %}<img class="bt-card__case" src="{{ cs.image|img }}" alt="{{ cs.name }}" title="{{ cs.name }}" loading="lazy" />{% endfor %}
+        </div>
+
+        <div class="bt-card__foot">
+          <div class="bt-card__seats">
+            {% for s in c.slots %}
+              {% if s.filled %}
+                <span class="bt-ava {% if s.won %}is-won{% endif %}">
+                  {% if s.photo %}<img src="{{ s.photo }}" alt="" />{% else %}<span class="bt-ava__ph">{{ s.name|slice:':1'|upper }}</span>{% endif %}
+                  <span class="bt-ava__badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1.5 3 4 4.5 4 8a4 4 0 0 1-8 0c0-1 .4-1.8 1-2.5C9 8 9.5 5 12 2z"/></svg>{{ s.streak }}</span>
+                </span>
+              {% else %}
+                <span class="bt-ava bt-ava--empty"></span>
+              {% endif %}
+            {% endfor %}
+          </div>
+          <span class="bt-card__btn">{% if c.status == 'completed' %}Ko'rish{% elif c.full %}Ko'rish{% else %}Ochish{% endif %}</span>
+        </div>
+      </a>
+    {% empty %}
+      <div class="bt-empty">
+        <p>Hozircha jang yo'q.</p>
+        <a class="bt-create-btn" href="{% url 'battle-create' %}">Jang yaratish</a>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+{% endblock %}

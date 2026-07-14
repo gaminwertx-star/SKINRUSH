@@ -83,9 +83,12 @@ class Player(models.Model):
         User, on_delete=models.CASCADE, related_name="player", null=True, blank=True
     )
     telegram_id = models.BigIntegerField(unique=True, null=True, blank=True, db_index=True)
-    username = models.CharField(max_length=64, blank=True)     # Telegram @username
+    username = models.CharField(max_length=64, blank=True)     # Telegram @username / login name
     first_name = models.CharField(max_length=120, blank=True)
     photo_url = models.URLField(max_length=500, blank=True)
+    # SKINRUSH account (email/username/phone + password login). Phone is unique
+    # so it can be used to log in; null lets Telegram-only players omit it.
+    phone = models.CharField(max_length=32, blank=True, null=True, unique=True, db_index=True)
 
     balance = models.BigIntegerField(default=STARTING_BALANCE)  # current coins
     coins_purchased = models.BigIntegerField(default=0)         # total coins ever bought
@@ -131,6 +134,38 @@ class OpenRecord(models.Model):
 
     def __str__(self):
         return f"{self.skin_name} <- {self.case_name}"
+
+
+class Battle(models.Model):
+    """A real multiplayer case battle lobby.
+
+    The creator opens a lobby with N seats and a list of cases (rounds), paying
+    the entry cost for seat 0. Other real players join open seats (no bots), each
+    paying the same entry cost. When every seat is filled the battle is resolved:
+    every player opens the same rounds, and the player with the highest total drop
+    value wins ALL the dropped skins (they land in the winner's inventory).
+    """
+
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, null=True, blank=True,
+                               related_name="battles")          # creator (seat 0)
+    session_key = models.CharField(max_length=60, blank=True, db_index=True)
+    n_players = models.IntegerField(default=2)
+    case_ids = models.JSONField(default=list)          # ordered rounds (repeats allowed)
+    total_cost = models.BigIntegerField(default=0)     # entry cost per player
+    # waiting (lobby open) | completed (resolved) | cancelled (refunded)
+    status = models.CharField(max_length=16, default="waiting")
+    seats = models.JSONField(default=list)             # [{seat, player_id, name, photo, streak}]
+    winner_index = models.IntegerField(null=True, blank=True)
+    pot = models.BigIntegerField(default=0)            # total value of all dropped skins
+    paid = models.BooleanField(default=False)          # prize already credited to winner?
+    data = models.JSONField(default=dict)              # {cases, results:[{seat,player,drops,total}]}
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Battle #{self.pk} ({self.n_players}p, {self.total_cost})"
 
 
 class CoinPurchase(models.Model):

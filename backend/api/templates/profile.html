@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}{{ S.prof_title }} — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="prof">
+
+  <!-- HERO -->
+  <div class="prof-hero">
+    <div class="prof-hero__glow"></div>
+    <div class="prof-hero__main">
+      <div class="prof-ava">
+        <div class="prof-ava__ring"></div>
+        {% if P.photo %}
+          <img class="prof-ava__img" src="{{ P.photo }}" alt="" />
+        {% else %}
+          <div class="prof-ava__img prof-ava__img--ph">{{ P.name|first|upper }}</div>
+        {% endif %}
+        <span class="prof-ava__lvl">{{ level.level }}</span>
+      </div>
+
+      <div class="prof-id">
+        <h1 class="prof-id__name">{{ P.name }}</h1>
+        <div class="prof-id__meta">
+          <span class="prof-id__handle">@{{ P.handle }}</span>
+          {% if P.since %}<span class="prof-dot">•</span><span>{{ S.prof_member_since }} {{ P.since|date:"M Y" }}</span>{% endif %}
+          {% if P.id %}<span class="prof-dot">•</span><span>{{ S.prof_id }} {{ P.id }}</span>{% endif %}
+        </div>
+
+        <div class="prof-xp">
+          <div class="prof-xp__head">
+            <span class="prof-xp__lvl">{{ S.prof_level }} {{ level.level }}</span>
+            <span class="prof-xp__num">{{ level.cur|fmt }} / {{ level.need|fmt }} XP</span>
+          </div>
+          <div class="prof-xp__bar"><span class="prof-xp__fill" style="width:{{ level.pct }}%"></span></div>
+          <div class="prof-xp__sub">{{ level.remaining|fmt }} XP {{ S.prof_xp_to }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- balance + actions -->
+    <div class="prof-side">
+      <div class="prof-bal">
+        <span class="prof-bal__lbl">{{ S.prof_balance }}</span>
+        <span class="prof-bal__val"><img class="coin-img" src="/images/coin.png" alt="" /> {{ P.balance|fmt }}</span>
+      </div>
+      <div class="prof-side__acts">
+        <a class="btn btn--gold btn--sm" href="{% url 'dokon' %}">{{ S.prof_topup }}</a>
+        <a class="btn btn--teal btn--sm" href="{% url 'home' %}">{{ S.prof_daily }}</a>
+        <a class="btn btn--outline btn--sm" href="{% url 'inventory' %}">{{ S.prof_go_inv }}</a>
+        {% if P.auth %}
+          <form method="post" action="{% url 'logout' %}" class="ss-inline">{% csrf_token %}
+            <button class="btn btn--outline btn--sm prof-logout">{{ S.prof_logout }}</button>
+          </form>
+        {% else %}
+          <a class="btn btn--login btn--sm" href="{% url 'login' %}">{{ S.prof_login_cta }}</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if not P.auth %}
+    <div class="prof-guestbar">{{ S.prof_login_hint }} <a href="{% url 'login' %}">{{ S.prof_login_cta }} →</a></div>
+  {% endif %}
+
+  <!-- STAT TILES -->
+  <div class="prof-stats">
+    <div class="prof-stat">
+      <span class="prof-stat__ic prof-stat__ic--a">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M3 12h18"/><path d="M8 8V6a4 4 0 0 1 8 0v2"/></svg>
+      </span>
+      <span class="prof-stat__num">{{ cases_opened|fmt }}</span>
+      <span class="prof-stat__lbl">{{ S.prof_opened }}</span>
+    </div>
+    <div class="prof-stat">
+      <span class="prof-stat__ic prof-stat__ic--b">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+      </span>
+      <span class="prof-stat__num">{{ items_owned|fmt }}</span>
+      <span class="prof-stat__lbl">{{ S.prof_items }}</span>
+    </div>
+    <div class="prof-stat">
+      <span class="prof-stat__ic prof-stat__ic--c">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      </span>
+      <span class="prof-stat__num">{{ inv_value|fmt }}</span>
+      <span class="prof-stat__lbl">{{ S.prof_inv_value }}</span>
+    </div>
+    <div class="prof-stat">
+      <span class="prof-stat__ic prof-stat__ic--d">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s6 4 6 10a6 6 0 0 1-12 0c0-2 1-4 2-5 0 2 1 3 2 3 0-3 2-6 2-8z"/></svg>
+      </span>
+      <span class="prof-stat__num">{{ P.streak|fmt }}</span>
+      <span class="prof-stat__lbl">{{ S.prof_streak }}</span>
+    </div>
+    <div class="prof-stat">
+      <span class="prof-stat__ic prof-stat__ic--e">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </span>
+      <span class="prof-stat__num">{{ P.invited|fmt }}</span>
+      <span class="prof-stat__lbl">{{ S.prof_invited }}</span>
+    </div>
+    <div class="prof-stat">
+      <span class="prof-stat__ic prof-stat__ic--f">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 15 8.5 22 9.3l-5 4.6L18.5 21 12 17.3 5.5 21 7 13.9l-5-4.6L9 8.5z"/></svg>
+      </span>
+      <span class="prof-stat__num">{{ P.total_won|fmt }}</span>
+      <span class="prof-stat__lbl">{{ S.prof_total_won }}</span>
+    </div>
+  </div>
+
+  <!-- SHOWCASE: best drop + inventory preview -->
+  <div class="prof-grid">
+    <div class="prof-panel prof-best">
+      <h3 class="prof-panel__h">{{ S.prof_best }}</h3>
+      {% if best_drop %}
+        <a class="prof-best__card" href="{% url 'skin' %}?name={{ best_drop.name|urlencode }}" style="--rc:{{ best_drop.color }}">
+          <div class="prof-best__aura"></div>
+          <div class="prof-best__wear">{{ best_drop.wear|wearabbr }}</div>
+          <img class="prof-best__img" src="{{ best_drop.img|img }}" alt="" />
+          <div class="prof-best__weapon">{{ best_drop.weapon }}</div>
+          <div class="prof-best__name">{{ best_drop.finish }}</div>
+          <div class="prof-best__price"><img class="coin-img" src="/images/coin.png" alt="" /> {{ best_drop.price|fmt }}</div>
+        </a>
+      {% else %}
+        <div class="prof-empty">{{ S.prof_best_empty }}</div>
+      {% endif %}
+    </div>
+
+    <div class="prof-panel prof-invp">
+      <div class="prof-panel__head">
+        <h3 class="prof-panel__h">{{ S.prof_inv_preview }}</h3>
+        <a class="prof-panel__more" href="{% url 'inventory' %}">{{ S.prof_view_all }}</a>
+      </div>
+      {% if inv_preview %}
+        <div class="prof-invp__grid">
+          {% for it in inv_preview %}
+            <a class="prof-mini" href="{% url 'skin' %}?name={{ it.name|urlencode }}" style="--rc:{{ it.color }}" title="{{ it.name }}">
+              <img class="prof-mini__img" src="{{ it.img|img }}" alt="" loading="lazy" />
+              <div class="prof-mini__price">{{ it.price|fmt }}</div>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="prof-empty">{{ S.prof_history_empty }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- RECENT DROPS -->
+  <div class="prof-panel">
+    <h3 class="prof-panel__h">{{ S.prof_history }}</h3>
+    {% if history %}
+      <div class="prof-hist">
+        {% for h in history %}
+          <a class="prof-hrow" href="{% url 'skin' %}?name={{ h.name|urlencode }}" style="--rc:{{ h.color }}">
+            <span class="prof-hrow__bar"></span>
+            <img class="prof-hrow__img" src="{{ h.img|img }}" alt="" loading="lazy" />
+            <span class="prof-hrow__info">
+              <span class="prof-hrow__name">{{ h.weapon }} <b>{{ h.finish }}</b></span>
+              <span class="prof-hrow__sub">
+                <span class="prof-hrow__wear">{{ h.wear|wearabbr }}</span>
+                {% if h.case_name %}<span class="prof-dot">•</span>{{ h.case_name }} {{ S.prof_from_case }}{% endif %}
+                {% if h.when %}<span class="prof-dot">•</span>{{ h.when|timesince }}{% endif %}
+              </span>
+            </span>
+            {% if h.sold %}<span class="prof-hrow__sold">{{ S.prof_sold }}</span>{% endif %}
+            <span class="prof-hrow__price"><img class="coin-img" src="/images/coin.png" alt="" /> {{ h.price|fmt }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="prof-empty">{{ S.prof_history_empty }}</div>
+    {% endif %}
+  </div>
+
+</section>
+
+{% endblock %}

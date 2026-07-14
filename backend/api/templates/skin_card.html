@@ -1,0 +1,8 @@
+{% load skinrush_extras %}<div class="ss-card" style="--c:{{ item.color|default:'#b0c3d9' }}">
+  <div class="ss-card__img"><img src="{{ item.img|img }}" alt="{{ item.name }}" loading="lazy" /></div>
+  <div class="ss-card__name">{{ item.name }}</div>
+  <div class="ss-card__foot">
+    <span class="ss-card__price"><img class="coin-img" src="/images/coin.png" alt="" /> {{ item.price }}</span>
+    {% if item.chance %}<span class="ss-card__chance">{{ item.chance|floatformat:2 }}%</span>{% endif %}
+  </div>
+</div>

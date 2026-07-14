@@ -2,7 +2,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from . import admin_api, auth_telegram, views
+from . import admin_api, auth_account, auth_telegram, views
 
 router = DefaultRouter()
 router.register("cases", views.CaseViewSet, basename="case")
@@ -18,10 +18,13 @@ urlpatterns = [
     path("admin/cases/<int:pk>/", admin_api.admin_case_detail, name="admin-case-detail"),
     path("admin/users/", admin_api.admin_users, name="admin-users"),
     path("admin/users/<int:pk>/", admin_api.admin_user_detail, name="admin-user-detail"),
+    path("admin/users/<int:pk>/coins/", admin_api.admin_give_coins, name="admin-give-coins"),
     # Player auth (Telegram)
     path("auth/config/", auth_telegram.auth_config, name="auth-config"),
     path("auth/me/", auth_telegram.auth_me, name="auth-me"),
     path("auth/telegram/", auth_telegram.telegram_login, name="auth-telegram"),
+    path("auth/register/", auth_account.register, name="auth-register"),
+    path("auth/login/", auth_account.account_login, name="auth-login"),
     path("auth/logout/", auth_telegram.auth_logout, name="auth-logout"),
     path("top-drops/", views.top_drops, name="top-drops"),
     path("stats/", views.stats, name="stats"),
@@ -29,6 +32,8 @@ urlpatterns = [
     path("i18n/", views.i18n_strings, name="i18n"),
     path("lang/", views.set_lang, name="set-lang"),
     path("sell/", views.sell, name="sell"),
+    path("claim/", views.claim, name="claim"),
+    path("inventory/", views.inventory, name="inventory"),
     path("daily/", views.daily, name="daily"),
     path("daily/claim/", views.daily_claim, name="daily-claim"),
     path("upgrade/inventory/", views.upgrade_inventory, name="upgrade-inventory"),

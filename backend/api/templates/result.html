@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}{{ S.opening_title }} {{ pw.case_name }} — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="case-view{% if fast %} is-fast{% endif %}">
+  <a class="case-view__back" href="{% url 'case' pw.case_slug %}">{{ S.back }}</a>
+
+  <!-- PRO case-opening animation (winner baked server-side, CSS slides to it) -->
+  <div class="opening">
+    <div class="opening__glow"></div>
+    <div class="opening__pointer opening__pointer--top"></div>
+    <div class="opening__pointer opening__pointer--bottom"></div>
+    <div class="opening__marker"></div>
+    <div class="opening__track opening__track--ssr" style="--idx:{{ winner_index }}">
+      {% for s in reel %}
+        <div class="roul-item{% if forloop.counter0 == winner_index %} is-winner{% endif %}" style="--rc:{{ s.color|default:'#b0c3d9' }}">
+          <img class="roul-item__img" src="{{ s.img|img }}" alt="" loading="lazy" />
+          <div class="roul-item__name">{{ s.name }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if not fast %}
+  <div class="ss-skip">
+    <a class="btn btn--outline btn--sm ss-skip__btn" href="{% url 'result' %}?fast=1">
+      <svg class="ss-skip__ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 6v12l8.5-6L4 6zm9 0v12l8.5-6L13 6z"/></svg>
+      <span>{{ S.skip_btn }}</span>
+    </a>
+  </div>
+  {% endif %}
+
+  <!-- Reveal (kept hidden by CSS until the reel stops) -->
+  <div class="reveal-box is-in ss-after-roll" style="--rc:{{ pw.color|default:'#b0c3d9' }}">
+    <div class="reveal__glow"></div>
+    <div class="reveal__imgwrap">
+      <div class="reveal__shine"></div>
+      <img class="reveal__img" src="{{ pw.image|img }}" alt="{{ pw.name }}" />
+    </div>
+    <div class="reveal__tier">{{ pw.rarity }}</div>
+    <div class="reveal__name">{{ pw.name }}</div>
+    <div class="reveal__price"><img class="coin-img" src="/images/coin.png" alt="" /> {{ pw.price|fmt }}</div>
+    <div class="reveal__details">
+      <div class="reveal__row"><span>{{ S.row_weapon }}</span><b>{{ pw.weapon|default:pw.name }}</b></div>
+      <div class="reveal__row"><span>{{ S.row_finish }}</span><b>{{ pw.finish|default:'—' }}</b></div>
+      <div class="reveal__row"><span>{{ S.row_wear }}</span><b>{{ pw.wear|default:'—' }}</b></div>
+      <div class="reveal__row"><span>{{ S.row_float }}</span><b>{{ pw.float|default:'—' }}</b></div>
+      <div class="reveal__row"><span>{{ S.row_rarity }}</span><b style="color:{{ pw.color }}">{{ pw.rarity }}</b></div>
+      <div class="reveal__row"><span>{{ S.row_value }}</span><b class="coin"><img class="coin-img" src="/images/coin.png" alt="" /> {{ pw.price|fmt }}</b></div>
+    </div>
+  </div>
+
+  <div class="modal__actions modal__actions--duo ss-after-roll">
+    <form method="post" action="{% url 'claim' %}" class="ss-inline">{% csrf_token %}
+      <button class="btn btn--teal">{{ S.claim_btn }}</button>
+    </form>
+    <form method="post" action="{% url 'sell' %}" class="ss-inline">{% csrf_token %}
+      <button class="btn btn--gold">{{ S.sell_btn }} · +{{ pw.price|fmt }}</button>
+    </form>
+  </div>
+</section>
+
+{% endblock %}

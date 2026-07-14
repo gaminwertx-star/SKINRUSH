@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}Jang #{{ b.id }} — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="bt-arena" data-status="{{ b.status }}">
+  <a class="bt-back" href="{% url 'battles' %}">← {{ S.nav_janglar }}</a>
+
+  <div class="bt-arena__top" data-top>
+    <div class="bt-arena__cases" data-cases>
+      {% for cs in cases %}<img data-case="{{ forloop.counter0 }}" src="{{ cs.image|img }}" alt="{{ cs.name }}" title="{{ cs.name }}" />{% endfor %}
+    </div>
+  </div>
+
+  {% if b.status == 'waiting' %}
+    {# ---------------- lobby (waiting for real players) ---------------- #}
+    <div class="bt-lobby">
+      <div class="bt-lobby__seats">
+        {% for s in seats %}
+          <div class="bt-lobby__seat is-filled">
+            <span class="bt-ava is-big">
+              {% if s.photo %}<img src="{{ s.photo }}" alt="" />{% else %}<span class="bt-ava__ph">{{ s.name|slice:':1'|upper }}</span>{% endif %}
+              <span class="bt-ava__badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1.5 3 4 4.5 4 8a4 4 0 0 1-8 0c0-1 .4-1.8 1-2.5C9 8 9.5 5 12 2z"/></svg>{{ s.streak }}</span>
+            </span>
+            <span class="bt-lobby__name">{{ s.name }}</span>
+          </div>
+        {% endfor %}
+        {% for i in empty_seats %}
+          <div class="bt-lobby__seat is-empty">
+            <span class="bt-ava is-big bt-ava--empty">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.2a2 2 0 0 0-.6-1.4L12 12l-4.4 4.4A2 2 0 0 0 7 17.8V22"/><path d="M7 2v4.2a2 2 0 0 0 .6 1.4L12 12l4.4-4.4A2 2 0 0 0 17 6.2V2"/></svg>
+            </span>
+            <span class="bt-lobby__name bt-lobby__name--muted">Kutilmoqda…</span>
+          </div>
+        {% endfor %}
+      </div>
+
+      <div class="bt-lobby__bar">
+        <div class="bt-lobby__entry">Kirish narxi: <b>{{ b.total_cost|fmt }}</b> <img class="coin-img" src="/images/coin.png" alt="" /></div>
+        <div class="bt-lobby__actions">
+          {% if is_participant %}
+            {% if is_creator and seats|length == 1 %}
+              <form method="post" action="{% url 'battle-cancel' b.id %}">{% csrf_token %}
+                <button class="bt-btn bt-btn--ghost">Bekor qilish · +{{ b.total_cost|fmt }}</button>
+              </form>
+            {% endif %}
+            <span class="bt-lobby__wait">Boshqa o'yinchilar kutilmoqda…</span>
+          {% elif ME.authenticated %}
+            <form method="post" action="{% url 'battle-join' b.id %}">{% csrf_token %}
+              {% if can_afford %}
+                <button class="bt-btn bt-btn--join">Qatnashish · {{ b.total_cost|fmt }} <img class="coin-img" src="/images/coin.png" alt="" /></button>
+              {% else %}
+                <button class="bt-btn bt-btn--topup">To'ldirish · {{ b.total_cost|fmt }} <img class="coin-img" src="/images/coin.png" alt="" /></button>
+              {% endif %}
+            </form>
+          {% else %}
+            <a class="bt-btn bt-btn--join" href="{% url 'login' %}">Kirish</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  {% elif b.status == 'completed' %}
+    {# ---------------- round-by-round reveal + winner ---------------- #}
+    {{ reel_json|json_script:"bt-data" }}
+
+    <div class="bt-reels" data-reels>
+      {% for r in results %}
+        <div class="bt-reel-row {% if forloop.counter0 == b.winner_index %}is-winner{% endif %}" data-seat="{{ forloop.counter0 }}">
+          <div class="bt-reel-row__who">
+            <span class="bt-ava">
+              {% if r.photo %}<img src="{{ r.photo }}" alt="" />{% else %}<span class="bt-ava__ph">{{ r.name|slice:':1'|upper }}</span>{% endif %}
+              <span class="bt-ava__badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1.5 3 4 4.5 4 8a4 4 0 0 1-8 0c0-1 .4-1.8 1-2.5C9 8 9.5 5 12 2z"/></svg>{{ r.streak }}</span>
+            </span>
+            <span class="bt-reel-row__total" data-total>{{ r.total|fmt }} <img class="coin-img" src="/images/coin.png" alt="" /></span>
+          </div>
+          <div class="bt-reel" data-reel>
+            <div class="bt-reel__track" data-track>
+              {% for it in r.drops %}
+                <span class="bt-tile" style="--rc:{{ it.color|default:'#b0c3d9' }}"><img src="{{ it.img|img }}" alt="" loading="lazy" /></span>
+              {% endfor %}
+            </div>
+            <span class="bt-reel__marker"></span>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if winner %}
+      <div class="bt-win" data-win>
+        {% if is_participant %}
+          <div class="bt-outcome {% if you_won %}is-win{% else %}is-lose{% endif %}">
+            {% if you_won %}🎉 Siz yutdingiz!{% else %}Siz yutqazdingiz{% endif %}
+          </div>
+        {% endif %}
+        <div class="bt-win__hero">
+          <span class="bt-ava is-hero is-won">
+            {% if winner.photo %}<img src="{{ winner.photo }}" alt="" />{% else %}<span class="bt-ava__ph">{{ winner.name|slice:':1'|upper }}</span>{% endif %}
+            <span class="bt-ava__badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1.5 3 4 4.5 4 8a4 4 0 0 1-8 0c0-1 .4-1.8 1-2.5C9 8 9.5 5 12 2z"/></svg>{{ winner.streak }}</span>
+          </span>
+          <div class="bt-win__name">{{ winner.name }}</div>
+          <div class="bt-win__total">{{ b.pot|fmt }} <img class="coin-img" src="/images/coin.png" alt="" /></div>
+        </div>
+
+        <div class="bt-win__skins">
+          {% for it in winner.all_drops %}
+            <div class="bt-skin" style="--rc:{{ it.color|default:'#b0c3d9' }}">
+              {% if it.wear %}<span class="bt-skin__wear">{{ it.wear|wearabbr }}</span>{% endif %}
+              <div class="bt-skin__art"><img src="{{ it.img|img }}" alt="" loading="lazy" /></div>
+              <div class="bt-skin__wpn">{{ it.weapon }}</div>
+              <div class="bt-skin__fin">{{ it.finish|default:it.name }}</div>
+              <div class="bt-skin__foot">
+                <span class="bt-skin__price">{{ it.price|fmt }} <img class="coin-img" src="/images/coin.png" alt="" /></span>
+                {% if it.owner.photo %}
+                  <img class="bt-skin__owner" src="{{ it.owner.photo }}" alt="{{ it.owner.name }}" title="{{ it.owner.name }}" />
+                {% else %}
+                  <span class="bt-skin__owner bt-skin__owner--ph" title="{{ it.owner.name }}">{{ it.owner.name|slice:':1'|upper }}</span>
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+  {% else %}
+    <div class="bt-outcome is-lose">Bu jang bekor qilingan.</div>
+  {% endif %}
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var arena = document.querySelector('.bt-arena');
+  if (!arena) return;
+  var status = arena.dataset.status;
+
+  // Waiting lobby: poll so a filling seat / the battle starting shows up.
+  if (status === 'waiting') {
+    setTimeout(function () { location.reload(); }, 5000);
+    return;
+  }
+  if (status !== 'completed') return;
+
+  var dataEl = document.getElementById('bt-data');
+  if (!dataEl) return;
+  var D;
+  try { D = JSON.parse(dataEl.textContent); } catch (e) { return; }
+  var rounds = D.rounds || 0;
+  var seats = D.seats || [];
+  if (!rounds || !seats.length) return;
+
+  var reelsBox = arena.querySelector('[data-reels]');
+  var winBox = arena.querySelector('[data-win]');
+  var topBox = arena.querySelector('[data-top]');
+  var caseEls = arena.querySelectorAll('[data-case]');
+  var rows = arena.querySelectorAll('.bt-reel-row');
+
+  // pool of skin images for filler tiles
+  var pool = [];
+  seats.forEach(function (s) { (s.drops || []).forEach(function (d) { pool.push(d); }); });
+  function rand() { return pool[(Math.random() * pool.length) | 0]; }
+
+  var FILLER = 14;              // filler tiles before each round's real skin
+  var SPIN = 2400;             // ms spin per round
+  var HOLD = 2000;             // ms the landed skins stay
+  var coin = '<img class="coin-img" src="/images/coin.png" alt="" />';
+
+  function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+  function tile(d) {
+    var t = document.createElement('span');
+    t.className = 'bt-tile';
+    t.style.setProperty('--rc', (d && d.color) || '#b0c3d9');
+    t.innerHTML = '<img src="' + (d ? d.img : '') + '" alt="" />';
+    return t;
+  }
+
+  // Build each reel as segments: [filler..][round0 skin][filler..][round1 skin]...
+  var reels = [];
+  rows.forEach(function (row) {
+    var si = parseInt(row.dataset.seat, 10);
+    var drops = (seats[si] && seats[si].drops) || [];
+    var track = row.querySelector('[data-track]');
+    track.innerHTML = '';
+    var realIdx = [];
+    for (var r = 0; r < rounds; r++) {
+      for (var f = 0; f < FILLER; f++) track.appendChild(tile(rand()));
+      realIdx.push(track.children.length);        // index of this round's real skin
+      track.appendChild(tile(drops[r]));
+    }
+    // a little tail so the last skin isn't at the very edge
+    for (var e = 0; e < 6; e++) track.appendChild(tile(rand()));
+    reels.push({ row: row, track: track, realIdx: realIdx, drops: drops,
+                 total: row.querySelector('[data-total]') });
+  });
+
+  // hide the final winner reveal until the rounds finish
+  if (winBox) winBox.style.display = 'none';
+
+  var reel0 = reels[0];
+  var step = 0, tileW = 0;
+  if (reel0 && reel0.track.children.length) {
+    tileW = reel0.track.children[0].getBoundingClientRect().width;
+    var cs = getComputedStyle(reel0.track);
+    var gap = parseFloat(cs.columnGap || cs.gap || '0') || 0;
+    step = tileW + gap;
+  }
+  if (!step) { if (winBox) winBox.style.display = ''; return; }
+
+  function targetX(reel, r) {
+    var marker = reel.row.querySelector('.bt-reel').clientWidth / 2;
+    var idx = reel.realIdx[r];
+    return Math.round(marker - (idx * step + tileW / 2));
+  }
+
+  // start: park each reel a few tiles before round 0 (blurred filler)
+  reels.forEach(function (reel) {
+    reel.track.style.transition = 'none';
+    reel.track.style.transform = 'translateX(' + (targetX(reel, 0) + (FILLER - 2) * step) + 'px)';
+  });
+  void arena.offsetWidth;
+
+  function runRound(r) {
+    // highlight active case, dim the finished ones
+    caseEls.forEach(function (c) {
+      var ci = parseInt(c.dataset.case, 10);
+      c.classList.toggle('is-active', ci === r);
+      c.classList.toggle('is-done', ci < r);
+    });
+
+    reels.forEach(function (reel) {
+      reel.track.style.transition = 'transform ' + SPIN + 'ms cubic-bezier(.12,.62,.16,1)';
+      reel.track.style.transform = 'translateX(' + targetX(reel, r) + 'px)';
+    });
+
+    setTimeout(function () {
+      // land: flash winning tile + update running totals
+      reels.forEach(function (reel) {
+        var won = reel.track.children[reel.realIdx[r]];
+        if (won) won.classList.add('is-hit');
+        var sum = 0;
+        for (var k = 0; k <= r; k++) sum += (reel.drops[k] && reel.drops[k].price) || 0;
+        if (reel.total) reel.total.innerHTML = fmt(sum) + ' ' + coin;
+      });
+      setTimeout(function () {
+        reels.forEach(function (reel) {
+          var won = reel.track.children[reel.realIdx[r]];
+          if (won) won.classList.remove('is-hit');
+        });
+        if (r + 1 < rounds) {
+          runRound(r + 1);
+        } else {
+          finish();
+        }
+      }, HOLD);
+    }, SPIN + 60);
+  }
+
+  function showWin() {
+    if (winBox) { winBox.style.display = ''; winBox.classList.add('bt-win--in'); }
+  }
+  function finish() {
+    // the whole reel arena (case strip + reels) vanishes, then the winner shows
+    if (topBox) topBox.classList.add('is-over');
+    if (reelsBox) {
+      reelsBox.classList.add('is-over');
+      setTimeout(function () {
+        if (topBox) topBox.style.display = 'none';
+        reelsBox.style.display = 'none';
+        showWin();
+      }, 450);
+    } else {
+      if (topBox) topBox.style.display = 'none';
+      showWin();
+    }
+  }
+
+  // reset totals to 0 then start
+  reels.forEach(function (reel) { if (reel.total) reel.total.innerHTML = '0 ' + coin; });
+  setTimeout(function () { runRound(0); }, 500);
+})();
+</script>
+{% endblock %}

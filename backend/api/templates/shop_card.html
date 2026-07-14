@@ -1,0 +1,16 @@
+{% load skinrush_extras %}
+<a class="shop-card" style="--rc:{{ c.color }}" href="{% url 'skin' %}?item={{ c.item_id }}" title="{{ c.name }}">
+  <span class="shop-card__art"><img src="{{ c.img|img }}" alt="" loading="lazy" /></span>
+  {% if c.rarity %}<span class="shop-card__rar">{{ c.rarity }}</span>{% endif %}
+  <span class="shop-card__weapon">{{ c.weapon }}</span>
+  <span class="shop-card__finish">{{ c.finish }}</span>
+  <span class="shop-card__foot">
+    <span class="shop-card__price">
+      {% if not c.single %}<span class="shop-card__from">{{ S.shop_from }}</span>{% endif %}
+      <img class="coin-img" src="/images/coin.png" alt="" /> {{ c.price|fmt }}
+    </span>
+    <span class="shop-card__go" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    </span>
+  </span>
+</a>

@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}Jang yaratish — SKINRUSH{% endblock %}
+{% block content %}
+
+<form class="btc" method="post" action="{% url 'battle-create' %}"
+      data-balance="{{ ME.balance }}" data-auth="{{ is_auth|yesno:'1,0' }}">
+  {% csrf_token %}
+
+  <aside class="btc-panel">
+    <div class="btc-panel__label">O'yinchilar soni</div>
+    <div class="btc-players">
+      <label class="btc-players__opt"><input type="radio" name="players" value="2" checked><span>2</span></label>
+      <label class="btc-players__opt"><input type="radio" name="players" value="3"><span>3</span></label>
+      <label class="btc-players__opt"><input type="radio" name="players" value="4"><span>4</span></label>
+    </div>
+
+    <div class="btc-cost">
+      <div class="btc-cost__row">
+        <span>Jami narx</span>
+        <b class="btc-cost__val" data-total>0 <img class="coin-img" src="/images/coin.png" alt="" /></b>
+      </div>
+      <div class="btc-cost__sub">har bir o'yinchi uchun</div>
+    </div>
+
+    <div class="btc-warn" data-warn hidden>Mablag' yetarli emas</div>
+
+    <button class="btc-submit" type="submit" data-submit disabled>
+      Jang yaratish <span data-submit-total></span>
+    </button>
+    <div class="btc-selected-store" data-store></div>
+  </aside>
+
+  <div class="btc-main">
+    <h2 class="btc-h">Tanlangan keyslar (<span data-count>0</span>/8)</h2>
+    <div class="btc-chosen" data-chosen>
+      <p class="btc-chosen__empty" data-empty>Kamida bitta keys tanlang</p>
+    </div>
+    <div class="btc-max" data-max hidden>Maksimal 8 raund</div>
+
+    <h2 class="btc-h">Keyslarni tanlang</h2>
+    <div class="btc-grid">
+      {% for c in cases %}
+        <button type="button" class="btc-key" data-add
+                data-id="{{ c.id }}" data-name="{{ c.name }}" data-price="{{ c.price }}"
+                data-img="{{ c.image|img }}">
+          <img class="btc-key__img" src="{{ c.image|img }}" alt="{{ c.name }}" loading="lazy" />
+          <span class="btc-key__name">{{ c.name }}</span>
+          <span class="btc-key__price">{{ c.price|fmt }} <img class="coin-img" src="/images/coin.png" alt="" /></span>
+        </button>
+      {% endfor %}
+    </div>
+  </div>
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var form = document.querySelector('.btc');
+  if (!form) return;
+  var MAX = 8;
+  var balance = parseInt(form.dataset.balance || '0', 10);
+  var isAuth = form.dataset.auth === '1';
+  var chosen = form.querySelector('[data-chosen]');
+  var emptyMsg = form.querySelector('[data-empty]');
+  var store = form.querySelector('[data-store]');
+  var countEl = form.querySelector('[data-count]');
+  var totalEl = form.querySelector('[data-total]');
+  var subTotal = form.querySelector('[data-submit-total]');
+  var warn = form.querySelector('[data-warn]');
+  var maxMsg = form.querySelector('[data-max]');
+  var submit = form.querySelector('[data-submit]');
+  var coin = '<img class="coin-img" src="/images/coin.png" alt="" />';
+  var sel = [];  // {id, name, price, img}
+
+  function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+
+  function render() {
+    // chosen tiles
+    chosen.querySelectorAll('.btc-chosen__tile').forEach(function (n) { n.remove(); });
+    sel.forEach(function (c, i) {
+      var t = document.createElement('div');
+      t.className = 'btc-chosen__tile';
+      t.innerHTML =
+        '<button type="button" class="btc-chosen__x" data-rm="' + i + '" aria-label="remove">&times;</button>' +
+        '<img src="' + c.img + '" alt="" />' +
+        '<span class="btc-chosen__name">' + c.name + '</span>' +
+        '<span class="btc-chosen__price">' + fmt(c.price) + ' ' + coin + '</span>';
+      chosen.appendChild(t);
+    });
+    emptyMsg.style.display = sel.length ? 'none' : '';
+
+    // hidden inputs
+    store.innerHTML = '';
+    sel.forEach(function (c) {
+      var inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'case_ids'; inp.value = c.id;
+      store.appendChild(inp);
+    });
+
+    var total = sel.reduce(function (s, c) { return s + c.price; }, 0);
+    countEl.textContent = sel.length;
+    totalEl.innerHTML = fmt(total) + ' ' + coin;
+    subTotal.innerHTML = total ? '· ' + fmt(total) + ' ' + coin : '';
+    maxMsg.hidden = sel.length < MAX;
+
+    var poor = isAuth && total > balance;
+    warn.hidden = !(poor && total > 0);
+    submit.disabled = sel.length === 0 || poor;
+  }
+
+  form.querySelectorAll('[data-add]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (sel.length >= MAX) return;
+      sel.push({ id: btn.dataset.id, name: btn.dataset.name,
+                 price: parseInt(btn.dataset.price, 10), img: btn.dataset.img });
+      render();
+    });
+  });
+
+  chosen.addEventListener('click', function (e) {
+    var x = e.target.closest('[data-rm]');
+    if (!x) return;
+    sel.splice(parseInt(x.dataset.rm, 10), 1);
+    render();
+  });
+
+  render();
+})();
+</script>
+{% endblock %}

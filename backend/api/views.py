@@ -6,6 +6,7 @@ price. The draw is weighted by those real chances on the server.
 import random
 from datetime import timedelta
 
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action, api_view
@@ -13,7 +14,7 @@ from rest_framework.response import Response
 
 from . import game, i18n
 from .auth_telegram import current_player
-from .models import Case, CaseItem, Drop, OpenRecord
+from .models import Battle, Case, CaseItem, Drop, OpenRecord, Player
 from .serializers import CaseSerializer, DropSerializer
 
 TOP_RARITIES = ["Covert", "Extraordinary", "Classified", "Exceptional",
@@ -86,24 +87,42 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=["post"])
     def open(self, request, pk=None):
-        """Weighted draw by real chance. Records a Drop, returns the won skin."""
+        """Real open: charge the case price (real balance), draw by real chance.
+        The won skin is NOT added to the inventory yet — the player then chooses
+        to keep it (claim/ = "Olish") or sell it (sell/)."""
         case = self.get_object()
         items = list(case.items.all())
         if not items:
             return Response({"error": "Bo'sh keys"}, status=400)
+
+        price = case.price
+        player = current_player(request)
+        # --- charge the price against the real balance (player or guest session) ---
+        if player:
+            if player.balance < price:
+                return Response({"error": "Balans yetmadi", "code": "insufficient"}, status=400)
+            player.balance -= price
+            player.save(update_fields=["balance", "last_seen"])
+            balance = player.balance
+        else:
+            state = get_state(request)
+            if state["balance"] < price:
+                return Response({"error": "Balans yetmadi", "code": "insufficient"}, status=400)
+            state["balance"] -= price
+            save_state(request, state)
+            balance = state["balance"]
+
         winner = game.draw_item(items)
         Drop.objects.create(case=case, item=winner)
         Case.objects.filter(pk=case.pk).update(opens=case.opens + 1)
 
-        # record per-player history when a Telegram player is logged in
-        player = current_player(request)
-        if player:
-            OpenRecord.objects.create(
-                player=player, case=case, case_name=case.name,
-                skin_name=winner.name, skin_image=winner.image,
-                skin_price=winner.price, rarity=winner.rarity,
-                color=winner.color, wear=winner.wear,
-            )
+        # Remember this drop so claim/ or sell/ can only act on a real opening.
+        request.session["pending_win"] = {
+            "skin_id": winner.id, "case_id": case.id, "case_name": case.name,
+            "name": winner.name, "image": winner.image, "price": winner.price,
+            "rarity": winner.rarity, "color": winner.color, "wear": winner.wear,
+        }
+        request.session.modified = True
 
         reel = [game.draw_item(items) for _ in range(60)]
         reel[50] = winner
@@ -115,6 +134,7 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
             "winner": payload,
             "reel": [item_payload(it) for it in reel],
             "winner_index": 50,
+            "balance": balance,
         })
 
 
@@ -170,28 +190,222 @@ def set_lang(request):
     return Response({"lang": lang, "strings": i18n.strings_for(lang)})
 
 
+def _credit(request, player, amount):
+    """Add coins to the balance (real player or guest session) and return it."""
+    if player:
+        player.balance += amount
+        player.total_won += amount
+        player.save(update_fields=["balance", "total_won", "last_seen"])
+        return player.balance, player.total_won
+    state = get_state(request)
+    state["balance"] += amount
+    state["total_won"] += amount
+    save_state(request, state)
+    return state["balance"], state["total_won"]
+
+
 @api_view(["POST"])
 def sell(request):
-    item = CaseItem.objects.filter(pk=_int(request.data.get("skin_id"))).first()
-    if item is None:
-        return Response({"error": "Skin topilmadi"}, status=400)
+    """Sell a skin for coins. Targets either an inventory record (record_id) or
+    the just-opened drop (pending_win in the session)."""
+    player = current_player(request)
+    rec_id = _int(request.data.get("record_id"))
+
+    # 1) Selling an item already in the inventory.
+    if rec_id and player:
+        rec = player.opens.filter(pk=rec_id, sold=False).first()
+        if not rec:
+            return Response({"error": "Topilmadi"}, status=400)
+        rec.sold = True
+        rec.save(update_fields=["sold"])
+        balance, total_won = _credit(request, player, rec.skin_price)
+        return Response({"sold": rec.skin_price, "name": rec.skin_name,
+                         "balance": balance, "total_won": total_won})
+    if rec_id and not player:
+        inv = request.session.get("inv", [])
+        row = next((r for r in inv if r["id"] == rec_id), None)
+        if not row:
+            return Response({"error": "Topilmadi"}, status=400)
+        request.session["inv"] = [r for r in inv if r["id"] != rec_id]
+        request.session.modified = True
+        balance, total_won = _credit(request, None, row["price"])
+        return Response({"sold": row["price"], "name": row["name"],
+                         "balance": balance, "total_won": total_won})
+
+    # 2) Selling the freshly-opened drop.
+    pw = request.session.get("pending_win")
+    if not pw:
+        return Response({"error": "Sotish uchun narsa yo'q"}, status=400)
+    request.session.pop("pending_win")
+    request.session.modified = True
+    balance, total_won = _credit(request, player, pw["price"])
+    return Response({"sold": pw["price"], "name": pw["name"],
+                     "balance": balance, "total_won": total_won})
+
+
+@api_view(["POST"])
+def claim(request):
+    """"Olish" — keep the just-opened drop in the player's personal inventory."""
+    pw = request.session.get("pending_win")
+    if not pw:
+        return Response({"error": "Olish uchun narsa yo'q"}, status=400)
+    request.session.pop("pending_win")
+    request.session.modified = True
+
     player = current_player(request)
     if player:
-        player.balance += item.price
-        player.total_won += item.price
-        player.save(update_fields=["balance", "total_won", "last_seen"])
-        rec = player.opens.filter(skin_name=item.name, sold=False).first()
-        if rec:
-            rec.sold = True
-            rec.save(update_fields=["sold"])
-        return Response({"sold": item.price, "balance": player.balance,
-                         "total_won": player.total_won})
-    state = get_state(request)
-    state["balance"] += item.price
-    state["total_won"] += item.price
-    save_state(request, state)
-    return Response({"sold": item.price, "balance": state["balance"],
-                     "total_won": state["total_won"]})
+        case = Case.objects.filter(pk=pw["case_id"]).first()
+        rec = OpenRecord.objects.create(
+            player=player, case=case, case_name=pw["case_name"],
+            skin_name=pw["name"], skin_image=pw["image"], skin_price=pw["price"],
+            rarity=pw["rarity"], color=pw["color"], wear=pw["wear"], sold=False,
+        )
+        count = player.opens.filter(sold=False).count()
+        return Response({"ok": True, "record_id": rec.id, "count": count})
+
+    # guest inventory lives in the session
+    inv = request.session.get("inv", [])
+    uid = request.session.get("inv_uid", 0) + 1
+    inv.append({"id": uid, **{k: pw[k] for k in
+                ("name", "image", "price", "rarity", "color", "wear", "case_name")}})
+    request.session["inv"] = inv
+    request.session["inv_uid"] = uid
+    request.session.modified = True
+    return Response({"ok": True, "count": len(inv)})
+
+
+def _inv_item(rec_id, name, image, price, rarity, color, wear, case_name):
+    parts = name.split(" | ")
+    return {
+        "id": rec_id, "name": name, "weapon": parts[0],
+        "finish": parts[1] if len(parts) > 1 else name,
+        "img": image, "price": price, "tier_label": rarity or "",
+        "color": color or "#b0c3d9", "wear": wear or "", "case_name": case_name,
+    }
+
+
+@api_view(["GET"])
+def inventory(request):
+    """The player's personal inventory (skins kept via "Olish")."""
+    player = current_player(request)
+    if player:
+        items = [_inv_item(r.id, r.skin_name, r.skin_image, r.skin_price,
+                           r.rarity, r.color, r.wear, r.case_name)
+                 for r in player.opens.filter(sold=False).order_by("-created_at")]
+    else:
+        items = [_inv_item(r["id"], r["name"], r["image"], r["price"],
+                           r["rarity"], r["color"], r["wear"], r["case_name"])
+                 for r in reversed(request.session.get("inv", []))]
+    return Response({"items": items, "count": len(items),
+                     "total": sum(i["price"] for i in items)})
+
+
+# ---------- case battles ----------
+# Every skin dropped inside a battle is valued 5% below its catalog price — a
+# flat house rake applied to all cases.
+BATTLE_VALUE_MULT = 0.95
+
+
+def _clamp(v, lo, hi, default):
+    n = _int(v)
+    if n is None:
+        return default
+    return max(lo, min(hi, n))
+
+
+def _seat_of(player, seat_index):
+    """Build a seat entry (stored on Battle.seats) for a real logged-in player."""
+    return {
+        "seat": seat_index,
+        "player_id": player.id,
+        "name": player.display_name,
+        "photo": player.photo_url or "",
+        "streak": player.streak or 0,
+    }
+
+
+def _resolve_battle(battle):
+    """Every seated player opens the same rounds; the highest total drop value
+    wins ALL the dropped skins (they land in the winner's inventory). Idempotent
+    via battle.paid, so a double-join can't pay out twice."""
+    if battle.paid:
+        return
+    uniq = {c.id: c for c in Case.objects.filter(id__in=set(battle.case_ids))}
+    ordered = [uniq[cid] for cid in battle.case_ids if cid in uniq]
+    items_by_case = {cid: list(c.items.all()) for cid, c in uniq.items()}
+
+    results = []
+    for s in battle.seats or []:
+        owner = {"name": s.get("name", ""), "photo": s.get("photo", "")}
+        drops, total = [], 0
+        for c in ordered:
+            w = game.draw_item(items_by_case[c.id])
+            it = item_payload(w)
+            it["price"] = int(round(w.price * BATTLE_VALUE_MULT))   # 5% battle rake
+            it["float"] = game.wear_float(w.wear)
+            it["case_img"] = c.image
+            it["owner"] = owner
+            drops.append(it)
+            total += it["price"]
+        results.append({
+            "seat": s.get("seat"), "player_id": s.get("player_id"),
+            "name": s.get("name", ""), "photo": s.get("photo", ""),
+            "streak": s.get("streak", 0), "drops": drops, "total": total,
+        })
+
+    winner_index = max(range(len(results)), key=lambda i: results[i]["total"]) if results else 0
+    pot = sum(r["total"] for r in results)
+
+    battle.winner_index = winner_index
+    battle.pot = pot
+    battle.status = "completed"
+    battle.paid = True
+    battle.data = {
+        "cases": [{"name": c.name, "image": c.image} for c in ordered],
+        "results": results,
+    }
+    battle.save(update_fields=["winner_index", "pot", "status", "paid", "data"])
+
+    # All skins from every seat move into the winner's inventory.
+    wp = Player.objects.filter(pk=results[winner_index].get("player_id")).first() if results else None
+    if wp:
+        for r in results:
+            for i, it in enumerate(r["drops"]):
+                case = ordered[i] if i < len(ordered) else None
+                OpenRecord.objects.create(
+                    player=wp, case=case,
+                    case_name=(case.name if case else ""),
+                    skin_name=it.get("name", ""), skin_image=it.get("img", ""),
+                    skin_price=it.get("price", 0), rarity=it.get("tier_label", ""),
+                    color=it.get("color", ""), wear=it.get("wear", ""), sold=False)
+
+
+def _battle_card(b):
+    """Compact card for the battles list: cases, price, filled/empty seats."""
+    seats = b.seats or []
+    by_seat = {s.get("seat"): s for s in seats}
+    slots = []
+    for pi in range(b.n_players):
+        s = by_seat.get(pi)
+        if s:
+            slots.append({"filled": True, "name": s.get("name", ""),
+                          "photo": s.get("photo", ""), "streak": s.get("streak", 0),
+                          "won": b.status == "completed" and b.winner_index == pi})
+        else:
+            slots.append({"filled": False})
+    return {
+        "id": b.id, "price": b.total_cost, "rounds": len(b.case_ids or []),
+        "cases": (b.data or {}).get("cases") or _card_cases(b),
+        "slots": slots, "status": b.status,
+        "full": len(seats) >= b.n_players,
+    }
+
+
+def _card_cases(b):
+    """Case thumbnails for a battle that hasn't been resolved yet (no data.cases)."""
+    uniq = {c.id: c for c in Case.objects.filter(id__in=set(b.case_ids or []))}
+    return [{"name": uniq[cid].name, "image": uniq[cid].image}
+            for cid in (b.case_ids or []) if cid in uniq]
 
 
 # ---------- daily reward + tasks ----------
@@ -304,49 +518,50 @@ def daily_claim(request):
 UPGRADE_EDGE = 0.9
 
 
-def _universe_by_id():
-    return {it.id: it for it in game.get_universe()}
+# Upgrade now runs on the player's REAL personal inventory (the skins kept via
+# "Olish"): the source skin is consumed and, on a win, the target is added.
+def _owned_rows(request):
+    """Real owned inventory, newest first: [{uid, value, name, image, rarity, color, wear}]."""
+    player = current_player(request)
+    if player:
+        return [{"uid": r.id, "value": r.skin_price, "name": r.skin_name,
+                 "image": r.skin_image, "rarity": r.rarity, "color": r.color, "wear": r.wear}
+                for r in player.opens.filter(sold=False).order_by("-created_at")]
+    return [{"uid": r["id"], "value": r["price"], "name": r["name"], "image": r["image"],
+             "rarity": r["rarity"], "color": r["color"], "wear": r["wear"]}
+            for r in reversed(request.session.get("inv", []))]
 
 
-def _seed_inventory(request):
-    universe = game.get_universe()
-    pool = [it for it in universe if 1000 <= it.price <= 60000] or universe
-    picks = random.sample(pool, min(8, len(pool)))
-    inventory = [{"uid": i + 1, "skin_id": it.id, "value": it.price}
-                 for i, it in enumerate(picks)]
-    inventory.sort(key=lambda x: x["value"])
-    request.session["upg_inv"] = inventory
-    request.session["upg_uid"] = len(inventory) + 1
-    request.session.modified = True
-    return inventory
+def _owned_skin_payload(row):
+    parts = row["name"].split(" | ")
+    return {"id": row["uid"], "name": row["name"], "weapon": parts[0],
+            "finish": parts[1] if len(parts) > 1 else row["name"],
+            "wear": row["wear"] or "", "tier_label": row["rarity"] or "",
+            "color": row["color"] or "#b0c3d9", "img": row["image"],
+            "price": row["value"], "chance": None}
 
 
-def _inventory(request):
-    if "upg_inv" not in request.session:
-        return _seed_inventory(request)
-    return request.session["upg_inv"]
-
-
-def _inv_payload(inventory, byid):
-    out = []
-    for row in inventory:
-        it = byid.get(row["skin_id"]) or CaseItem.objects.filter(pk=row["skin_id"]).first()
-        if it:
-            out.append({"uid": row["uid"], "value": row["value"], "skin": item_payload(it)})
-    return out
+def _upg_inv(rows):
+    return [{"uid": r["uid"], "value": r["value"], "skin": _owned_skin_payload(r)} for r in rows]
 
 
 @api_view(["GET"])
 def upgrade_inventory(request):
-    return Response({"inventory": _inv_payload(_inventory(request), _universe_by_id())})
+    return Response({"inventory": _upg_inv(_owned_rows(request))})
 
 
 @api_view(["GET"])
 def upgrade_targets(request):
+    """Realistic upgrade targets: skins priced just above the selected source
+    (cheapest achievable first), so the odds are meaningful — not only millionaire
+    knives. `from` = the source skin's value; `q` = name search."""
     q = (request.query_params.get("q") or "").strip().lower()
-    universe = sorted(game.get_universe(), key=lambda it: -it.price)
+    fromv = _int(request.query_params.get("from")) or 0
+    universe = game.get_universe()
     if q:
         universe = [it for it in universe if q in it.name.lower()]
+    universe = [it for it in universe if it.price > fromv]
+    universe.sort(key=lambda it: it.price)   # cheapest achievable first
     universe = universe[:60]
     return Response({"targets": [{"skin": item_payload(it), "value": it.price}
                                  for it in universe]})
@@ -359,8 +574,8 @@ def _odds(from_value, to_value):
 
 @api_view(["POST"])
 def upgrade_compute(request):
-    inventory = _inventory(request)
-    from_item = next((r for r in inventory if r["uid"] == _int(request.data.get("from_uid"))), None)
+    rows = _owned_rows(request)
+    from_item = next((r for r in rows if r["uid"] == _int(request.data.get("from_uid"))), None)
     to = CaseItem.objects.filter(pk=_int(request.data.get("to_skin_id"))).first()
     if not from_item or not to or to.price <= from_item["value"]:
         return Response({"valid": False})
@@ -370,9 +585,9 @@ def upgrade_compute(request):
 
 @api_view(["POST"])
 def upgrade_play(request):
-    inventory = _inventory(request)
+    rows = _owned_rows(request)
     from_uid = _int(request.data.get("from_uid"))
-    from_item = next((r for r in inventory if r["uid"] == from_uid), None)
+    from_item = next((r for r in rows if r["uid"] == from_uid), None)
     to = CaseItem.objects.filter(pk=_int(request.data.get("to_skin_id"))).first()
     if not from_item or not to or to.price <= from_item["value"]:
         return Response({"error": "Nishon qimmatroq bo'lishi kerak"}, status=400)
@@ -385,17 +600,27 @@ def upgrade_play(request):
     else:
         landing = chance_deg + 3 + random.random() * max(2, 360 - chance_deg - 6)
 
-    inventory = [r for r in inventory if r["uid"] != from_uid]
-    if won:
-        uid = request.session.get("upg_uid", len(inventory) + 1)
-        inventory.append({"uid": uid, "skin_id": to.id, "value": to.price})
-        request.session["upg_uid"] = uid + 1
-    inventory.sort(key=lambda x: x["value"])
-    request.session["upg_inv"] = inventory
-    request.session.modified = True
+    player = current_player(request)
+    if player:
+        player.opens.filter(pk=from_uid).update(sold=True)   # consume the source skin
+        if won:
+            OpenRecord.objects.create(
+                player=player, case=to.case, case_name=to.case.name if to.case else "",
+                skin_name=to.name, skin_image=to.image, skin_price=to.price,
+                rarity=to.rarity, color=to.color, wear=to.wear, sold=False)
+    else:
+        inv = [r for r in request.session.get("inv", []) if r["id"] != from_uid]
+        if won:
+            uid = request.session.get("inv_uid", 0) + 1
+            inv.append({"id": uid, "name": to.name, "image": to.image, "price": to.price,
+                        "rarity": to.rarity, "color": to.color, "wear": to.wear,
+                        "case_name": to.case.name if to.case else ""})
+            request.session["inv_uid"] = uid
+        request.session["inv"] = inv
+        request.session.modified = True
 
     return Response({
         "won": won, "chance": chance, "landing_deg": landing,
         "target": {"skin": item_payload(to), "value": to.price},
-        "inventory": _inv_payload(inventory, _universe_by_id()),
+        "inventory": _upg_inv(_owned_rows(request)),
     })

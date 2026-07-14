@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block content %}
+
+<!-- DAILY REWARD + TASKS -->
+<section class="promo-grid">
+  <div class="panel daily">
+    <div class="panel__head">
+      <img class="panel__icon" src="/images/icons/gift.png" alt="" />
+      <div>
+        <h2 class="panel__title">{{ S.daily_title }}</h2>
+        <p class="panel__sub">{{ S.daily_sub }}</p>
+      </div>
+    </div>
+    <div class="days">
+      {% for d in days %}
+        <div class="day day--{{ d.state }}">
+          <div class="day__label">{{ d.d }}-{{ S.day_key|lower }}</div>
+          <div class="day__mid">
+            {% if d.state == 'special' %}<img class="day__chest" src="/images/icons/chests.png" alt="" />
+            {% elif d.state == 'locked' %}<img class="day__lock" src="/images/icons/lock.png" alt="" />
+            {% elif d.state == 'claimed' %}<div class="day__check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-11"/></svg></div>
+            {% endif %}
+          </div>
+          <div class="day__reward">
+            {% if d.state == 'special' %}<span class="day__key">{{ S.day_key }}</span>
+            {% else %}{{ d.r }} <img class="coin-img" src="/images/coin.png" alt="" />{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    <div class="daily__foot">
+      <div class="daily__timer">{{ S.daily_next }} <b>00:00:00</b></div>
+      <form method="post" action="{% url 'daily-claim' %}" class="ss-inline">{% csrf_token %}
+        <button class="btn btn--teal daily__claim" {% if daily_claimed %}disabled{% endif %}>{{ S.daily_claim }}</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="panel tasks">
+    <div class="panel__head">
+      <div class="panel__icon panel__icon--svg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12l2 2 4-4"/></svg></div>
+      <div>
+        <h2 class="panel__title">{{ S.tasks_title }}</h2>
+        <p class="panel__sub">{{ S.tasks_sub }}</p>
+      </div>
+    </div>
+    <div class="task-list">
+      {% for t in tasks %}
+        <div class="task">
+          <div class="task__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg></div>
+          <div class="task__label">{{ t.label }}</div>
+          <div class="task__reward">+{{ t.reward }} <img class="coin-img" src="/images/coin.png" alt="" /></div>
+        </div>
+      {% endfor %}
+    </div>
+    <a class="tasks__all" href="#">{{ S.tasks_all }}</a>
+  </div>
+</section>
+
+<!-- USER STATS -->
+<section class="stats stats--user">
+  <div class="stat stat--icon">
+    <span class="stat__badge stat__badge--gold"><img class="stat__ic" src="/images/coin.png" alt="" /></span>
+    <div class="stat__body"><div class="stat__num grad-gold">{{ ME.balance|fmt }}</div><div class="stat__label">{{ S.stat_coin }}</div></div>
+  </div>
+  <div class="stat stat--icon">
+    <span class="stat__badge stat__badge--violet"><img class="stat__ic" src="/images/icons/calendar.png" alt="" /></span>
+    <div class="stat__body"><div class="stat__num grad-violet">{{ ME.streak }}</div><div class="stat__label">{{ S.stat_streak }}</div></div>
+  </div>
+  <div class="stat stat--icon">
+    <span class="stat__badge stat__badge--blue"><img class="stat__ic" src="/images/icons/people.png" alt="" /></span>
+    <div class="stat__body"><div class="stat__num grad-blue">{{ ME.invited }}</div><div class="stat__label">{{ S.stat_invited }}</div></div>
+  </div>
+  <div class="stat stat--icon">
+    <span class="stat__badge stat__badge--green"><img class="stat__ic" src="/images/icons/trophy.png" alt="" /></span>
+    <div class="stat__body"><div class="stat__num grad-green">{{ ME.total_won|fmt }}</div><div class="stat__label">{{ S.stat_won }}</div></div>
+  </div>
+</section>
+
+<!-- CASES -->
+<section class="cases-section" id="cases">
+  <div class="cases-head">
+    <h2 class="section-title">{{ S.cases_title }}</h2>
+    <form class="cases-search" method="get" action="{% url 'home' %}">
+      <input type="text" name="q" value="{{ q }}" placeholder="{{ S.search_ph }}" />
+      <input type="number" name="min" value="{{ min }}" class="cases-price" placeholder="{{ S.min_ph }}" min="0" />
+      <input type="number" name="max" value="{{ max }}" class="cases-price" placeholder="{{ S.max_ph }}" min="0" />
+      <button class="btn btn--teal">{{ S.cases_title }}</button>
+    </form>
+  </div>
+  <div class="cases-grid">
+    {% for case in cases %}
+      <a class="case" href="{% url 'case' case.slug %}">
+        <div class="case__art">
+          <img class="case__img" src="{{ case.image|img }}" alt="{{ case.name }}" loading="lazy" />
+          <div class="case__crate" style="display:none"><span class="case__label">{{ case.name }}</span></div>
+        </div>
+        <div class="case__meta">
+          <div class="case__name">{{ case.name }}</div>
+          <div class="case__stats">
+            <span class="pill pill--price">{{ case.price|fmt }} <img class="coin-img" src="/images/coin.png" alt="" /></span>
+          </div>
+        </div>
+      </a>
+    {% empty %}
+      <div class="ss-empty">Keys topilmadi.</div>
+    {% endfor %}
+  </div>
+</section>
+
+{% endblock %}

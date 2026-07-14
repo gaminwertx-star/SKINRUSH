@@ -1,33 +1,67 @@
 """Root URL configuration for SKINRUSH.
 
-Besides the API, Django also serves the static front-end (index.html, styles,
-app.js, images) so the whole site runs from one backend on one origin. That
-keeps the session cookie working for the per-user state endpoints.
+The whole public site is server-rendered (Django templates, no client-side JS):
+every screen is its own URL handled by `api.pages`. `/api/` is kept only for the
+staff admin panel. Static assets (styles.css, ssr.css, images/…) are served from
+the project root by the trailing static fallback.
 """
 from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path, re_path
 from django.views.static import serve as static_serve
 
+from api import pages
+
 FRONTEND_DIR = settings.FRONTEND_DIR
 
 
-def index(request):
-    return static_serve(request, "index.html", document_root=FRONTEND_DIR)
-
-
 def admin_panel(request):
-    # Custom admin single-page app. Auth is enforced by the /api/admin/* endpoints.
+    # Custom staff admin single-page app. Auth is enforced by /api/admin/*.
     return static_serve(request, "admin/index.html", document_root=FRONTEND_DIR)
 
 
 urlpatterns = [
-    # Custom admin panel (our own UI) — works with or without a trailing slash.
+    # ---- admin + legacy API (declared first so the public page URL names below
+    #      win reverse() over the old DRF endpoints that share names) ----
     re_path(r"^adminpanel/?$", admin_panel, name="adminpanel"),
-    # Built-in Django admin kept as a hidden fallback only.
     path("django-admin/", admin.site.urls),
     path("api/", include("api.urls")),
-    path("", index, name="index"),
-    # Any other path is a front-end asset (styles.css, app.js, images/...).
+
+    # ---- public server-rendered site ----
+    path("", pages.home, name="home"),
+    path("kunlik/olish/", pages.daily_claim, name="daily-claim"),
+
+    path("keys/<slug:slug>/", pages.case_detail, name="case"),
+    path("skin/", pages.skin_detail, name="skin"),
+    path("skin/buy/", pages.skin_buy, name="skin-buy"),
+    path("keys/<slug:slug>/ochish/", pages.case_open, name="case-open"),
+    path("natija/", pages.result, name="result"),
+    path("olish/", pages.claim, name="claim"),
+    path("sotish/", pages.sell, name="sell"),
+
+    path("inventar/", pages.inventory, name="inventory"),
+
+    path("yaxshilash/", pages.upgrade, name="upgrade"),
+    path("yaxshilash/play/", pages.upgrade_play, name="upgrade-play"),
+
+    path("janglar/", pages.battles, name="battles"),
+    path("janglar/create/", pages.battle_create, name="battle-create"),
+    path("janglar/<int:pk>/", pages.battle_detail, name="battle"),
+    path("janglar/<int:pk>/qatnashish/", pages.battle_join, name="battle-join"),
+    path("janglar/<int:pk>/bekor/", pages.battle_cancel, name="battle-cancel"),
+
+    path("dokon/", pages.dokon, name="dokon"),
+    path("kontraktlar/", pages.kontraktlar, name="kontraktlar"),
+    path("kontraktlar/create/", pages.kontrakt_play, name="kontrakt-play"),
+    path("dostlar/", pages.dostlar, name="dostlar"),
+    path("profil/", pages.profile, name="profile"),
+
+    # ---- auth ----
+    path("kirish/", pages.login_page, name="login"),
+    path("royxat/", pages.register_page, name="register"),
+    path("chiqish/", pages.logout_page, name="logout"),
+    path("til/<str:code>/", pages.set_lang, name="setlang"),
+
+    # ---- static assets from the project root (styles.css, ssr.css, images/…) ----
     re_path(r"^(?P<path>.+)$", static_serve, {"document_root": FRONTEND_DIR}),
 ]

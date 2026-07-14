@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ S.login }} — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="ss-auth">
+  <div class="ss-auth__card">
+    <div class="ss-auth__logo">SKIN<span>RUSH</span></div>
+    <div class="ss-auth__tabs">
+      <span class="ss-auth__tab is-active">{{ S.login }}</span>
+      <a class="ss-auth__tab" href="{% url 'register' %}">Ro'yxatdan o'tish</a>
+    </div>
+
+    <form class="ss-auth__form" method="post" action="{% url 'login' %}">{% csrf_token %}
+      <label class="ss-field">
+        <span>Username yoki telefon</span>
+        <input type="text" name="login" autocomplete="username" placeholder="username yoki +998..." required />
+      </label>
+      <label class="ss-field">
+        <span>Parol</span>
+        <input type="password" name="password" autocomplete="current-password" placeholder="Parolingiz" required />
+      </label>
+      <button type="submit" class="btn btn--teal ss-auth__submit">{{ S.login }}</button>
+    </form>
+
+    <div class="ss-auth__note">Hisobingiz yo'qmi? <a href="{% url 'register' %}">Ro'yxatdan o'ting</a></div>
+  </div>
+</section>
+
+{% endblock %}

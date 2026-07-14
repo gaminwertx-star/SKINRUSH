@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="cases-section">
+  <div class="ss-empty ss-empty--big">
+    <div class="ss-soon">🔜</div>
+    <h2 class="section-title">{% if ACTIVE == 'kontraktlar' %}{{ S.nav_kontraktlar }}{% else %}{{ S.nav_dostlar }}{% endif %}</h2>
+    <p>{{ S.toast_section }}</p>
+    <a class="btn btn--teal" href="{% url 'home' %}">{{ S.back }}</a>
+  </div>
+</section>
+{% endblock %}

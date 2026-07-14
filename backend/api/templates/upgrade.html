@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}{{ S.nav_yaxshilash }} — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="upgrade">
+  <div class="cases-head"><h2 class="section-title">{{ S.upg_title }}</h2></div>
+
+  <!-- ARENA: source · gauge · target -->
+  <div class="upg-arena">
+    <!-- SOURCE -->
+    <div class="upg-slotcol">
+      <details class="upg-pick2">
+        <summary class="upg-pslot">
+          {% if from_skin %}
+            <div class="upg-card upg-card--big is-picked" style="--rc:{{ from_skin.color }}">
+              <div class="upg-card__art"><img src="{{ from_skin.img|img }}" alt="" loading="lazy" /></div>
+              <div class="upg-card__name">{{ from_skin.name }}</div>
+              <div class="upg-card__val"><img class="coin-img" src="/images/coin.png" alt="" /> {{ from_skin.price|fmt }}</div>
+              <span class="upg-change">{{ S.upg_pick_src }}</span>
+            </div>
+          {% else %}
+            <span class="upg-plus">
+              <span class="upg-plus__btn" aria-hidden="true">+</span>
+              <span class="upg-plus__label">{{ S.upg_your }}</span>
+            </span>
+          {% endif %}
+        </summary>
+        <div class="upg-pop">
+          <div class="upg-pop__title">{{ S.upg_inv_title }}</div>
+          <div class="upg-pop__grid">
+            {% for s in inv %}
+              <a class="upg-pick__item {% if s.id == from_uid %}is-sel{% endif %}" href="{% url 'upgrade' %}?from={{ s.id }}">
+                <div class="upg-card" style="--rc:{{ s.color }}">
+                  <div class="upg-card__art"><img src="{{ s.img|img }}" alt="" loading="lazy" /></div>
+                  <div class="upg-card__name">{{ s.name }}</div>
+                  <div class="upg-card__val"><img class="coin-img" src="/images/coin.png" alt="" /> {{ s.price|fmt }}</div>
+                </div>
+              </a>
+            {% empty %}
+              <div class="upg-empty">{{ S.upg_empty }}</div>
+            {% endfor %}
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <!-- GAUGE -->
+    <div class="upg-gauge">
+      <svg class="upg-gauge__svg" viewBox="0 0 240 240">
+        <circle class="upg-gauge__track" cx="120" cy="120" r="104" />
+        {% if result %}
+          <circle class="upg-ring__win {% if result.won %}ss-ring-win{% else %}ss-ring-lose{% endif %}"
+                  cx="120" cy="120" r="104" transform="rotate(-90 120 120)"
+                  style="stroke-dasharray: {% widthratio result.chance 1 653 %} 999;" />
+        {% elif target %}
+          <circle class="upg-gauge__arc" cx="120" cy="120" r="104" transform="rotate(-90 120 120)"
+                  style="stroke-dasharray: {% widthratio target.chance 1 653 %} 999;" />
+        {% endif %}
+      </svg>
+      {% if result %}
+        <div class="upg-gauge__needle ss-spin" style="--deg:{{ result.landing }}deg"></div>
+      {% else %}
+        <div class="upg-gauge__needle"></div>
+      {% endif %}
+      <div class="upg-gauge__center">
+        {% if result %}
+          <div class="upg-gauge__mark ss-after-spin {% if result.won %}ss-win{% else %}ss-lose{% endif %}">{% if result.won %}✓{% else %}✕{% endif %}</div>
+          <div class="upg-gauge__sub">{{ result.pct }}%</div>
+        {% elif target %}
+          <div class="upg-gauge__pct">{{ target.pct }}<span class="upg-gauge__pctsign">%</span></div>
+          <div class="upg-gauge__sub">{{ S.upg_chance }}</div>
+        {% else %}
+          <div class="upg-gauge__pct is-muted">—</div>
+          <div class="upg-gauge__sub">{{ S.upg_chance }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- TARGET -->
+    <div class="upg-slotcol">
+      {% if result %}
+        <div class="upg-card upg-card--big ss-after-spin" style="--rc:{{ result.target.color }}">
+          <div class="upg-card__art"><img src="{{ result.target.img|img }}" alt="" loading="lazy" /></div>
+          <div class="upg-card__name">{{ result.target.name }}</div>
+          <div class="upg-card__val"><img class="coin-img" src="/images/coin.png" alt="" /> {{ result.value|fmt }}</div>
+        </div>
+      {% else %}
+        <details class="upg-pick2 {% if not from_skin %}is-disabled{% endif %}">
+          <summary class="upg-pslot">
+            {% if target %}
+              <div class="upg-card upg-card--big is-picked" style="--rc:{{ target.skin.color }}">
+                <div class="upg-card__art"><img src="{{ target.skin.img|img }}" alt="" loading="lazy" /></div>
+                <div class="upg-card__name">{{ target.skin.name }}</div>
+                <div class="upg-card__val"><img class="coin-img" src="/images/coin.png" alt="" /> {{ target.value|fmt }}</div>
+                <span class="upg-card__mult">×{{ target.mult|floatformat:2 }}</span>
+              </div>
+            {% else %}
+              <span class="upg-plus upg-plus--t">
+                <span class="upg-plus__btn" aria-hidden="true">+</span>
+                <span class="upg-plus__label">{{ S.upg_target }}</span>
+              </span>
+            {% endif %}
+          </summary>
+          <div class="upg-pop upg-pop--wide">
+            <div class="upg-pop__title">
+              <span>{{ S.upg_pick_target }}</span>
+              {% if from_skin %}
+              <form method="get" action="{% url 'upgrade' %}" class="ss-inline">
+                <input type="hidden" name="from" value="{{ from_uid }}" />
+                <input type="text" name="q" value="{{ q }}" placeholder="{{ S.upg_search_ph }}" />
+              </form>
+              {% endif %}
+            </div>
+            <div class="upg-pop__grid">
+              {% if not from_skin %}<div class="upg-empty">{{ S.upg_pick_inv }}</div>{% endif %}
+              {% for t in targets %}
+                <a class="upg-pick__item {% if t.sel %}is-sel{% endif %}" href="{% url 'upgrade' %}?from={{ from_uid }}&amp;to={{ t.to_id }}">
+                  <div class="upg-card" style="--rc:{{ t.skin.color }}">
+                    <div class="upg-card__art"><img src="{{ t.skin.img|img }}" alt="" loading="lazy" /></div>
+                    <div class="upg-card__name">{{ t.skin.name }}</div>
+                    <div class="upg-card__val"><img class="coin-img" src="/images/coin.png" alt="" /> {{ t.value|fmt }}</div>
+                    <div class="upg-target-btn__odds">{{ t.pct }}% · ×{{ t.mult|floatformat:2 }}</div>
+                  </div>
+                </a>
+              {% endfor %}
+            </div>
+          </div>
+        </details>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- CONTROLS: multipliers + upgrade / verdict -->
+  <div class="upg-controls">
+    {% if result %}
+      <div class="upg-verdict ss-after-spin {% if result.won %}is-win{% else %}is-lose{% endif %}">
+        {% if result.won %}{{ S.upg_result_win|cut:'{name}' }}{{ result.target.name }} · <img class="coin-img" src="/images/coin.png" alt="" /> {{ result.value|fmt }}{% else %}{{ S.upg_result_lose|cut:'{name}' }}{{ result.target.name }}{% endif %}
+      </div>
+    {% elif from_skin %}
+      {% if mult_opts %}
+        <div class="upg-mults">
+          <span class="upg-mults__label">{{ S.upg_mult }}</span>
+          {% for o in mult_opts %}
+            <a class="upg-mult {% if o.active %}is-on{% endif %}" href="?from={{ from_uid }}&amp;mult={{ o.m }}">
+              <b>×{{ o.m }}</b><span class="upg-mult__pct">{{ o.pct }}%</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% if target %}
+        <form method="post" action="{% url 'upgrade-play' %}" class="upg-go-form">{% csrf_token %}
+          <input type="hidden" name="from_uid" value="{{ from_uid }}" />
+          <input type="hidden" name="to_skin_id" value="{{ target.to_id }}" />
+          <button class="upg-go" type="submit">{{ S.upg_go }} <span class="upg-go__pct">{{ target.pct }}%</span></button>
+        </form>
+      {% else %}
+        <div class="upg-hint">{{ S.upg_pick_target_hint }}</div>
+      {% endif %}
+    {% else %}
+      <div class="upg-hint">{{ S.upg_pick_inv }}</div>
+    {% endif %}
+  </div>
+</section>
+
+{% endblock %}

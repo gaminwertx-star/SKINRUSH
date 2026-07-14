@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Ro'yxatdan o'tish — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="ss-auth">
+  <div class="ss-auth__card">
+    <div class="ss-auth__logo">SKIN<span>RUSH</span></div>
+    <div class="ss-auth__tabs">
+      <a class="ss-auth__tab" href="{% url 'login' %}">{{ S.login }}</a>
+      <span class="ss-auth__tab is-active">Ro'yxatdan o'tish</span>
+    </div>
+
+    <form class="ss-auth__form" method="post" action="{% url 'register' %}">{% csrf_token %}
+      <label class="ss-field">
+        <span>Gmail</span>
+        <input type="email" name="email" autocomplete="email" placeholder="siz@gmail.com" required />
+      </label>
+      <label class="ss-field">
+        <span>Username</span>
+        <input type="text" name="username" autocomplete="username" placeholder="username" required />
+      </label>
+      <label class="ss-field">
+        <span>Telefon raqam</span>
+        <input type="tel" name="phone" autocomplete="tel" placeholder="+998 90 123 45 67" required />
+      </label>
+      <label class="ss-field">
+        <span>Parol</span>
+        <input type="password" name="password" autocomplete="new-password" placeholder="Kamida 6 ta belgi" required />
+      </label>
+      <button type="submit" class="btn btn--teal ss-auth__submit">Ro'yxatdan o'tish</button>
+    </form>
+
+    <div class="ss-auth__note">Hisobingiz bormi? <a href="{% url 'login' %}">Kiring</a></div>
+  </div>
+</section>
+
+{% endblock %}

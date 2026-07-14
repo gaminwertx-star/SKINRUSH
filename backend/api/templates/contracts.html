@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}{{ S.con_title }} — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="forge">
+  <div class="forge-head">
+    <div class="forge-eyebrow">{{ S.con_eyebrow }}</div>
+    <h2 class="forge-title">{{ S.con_title }}</h2>
+    <p class="forge-intro">{{ S.con_intro }}</p>
+  </div>
+
+  <div class="forge-stage {% if result %}{% if result.won %}is-win{% else %}is-lose{% endif %}{% endif %}">
+    <!-- CHARGE (inputs feeding the core) -->
+    <div class="forge-bay forge-bay--charge">
+      <div class="forge-bay__label">{{ S.con_charge }}{% if not result %} · <b>{{ picked_count }}</b>/{{ max }}{% endif %}</div>
+      <div class="forge-charge">
+        {% if result %}
+          {% for it in result.inputs %}
+            <div class="forge-chip" style="--rc:{{ it.color }}" title="{{ it.name }}">
+              <img src="{{ it.img|img }}" alt="" loading="lazy" />
+            </div>
+          {% endfor %}
+        {% else %}
+          {% for it in inv %}{% if it.selected %}
+            <a class="forge-chip forge-chip--rm" style="--rc:{{ it.skin.color }}" href="{{ it.toggle_qs }}" title="{{ it.skin.name }}">
+              <img src="{{ it.skin.img|img }}" alt="" loading="lazy" />
+              <span class="forge-chip__rm" aria-hidden="true">✕</span>
+            </a>
+          {% endif %}{% endfor %}
+          {% if not picked %}<div class="forge-charge__empty">{{ pick_hint }}</div>{% endif %}
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- CORE -->
+    <div class="forge-core-wrap">
+      {% if result %}
+        <div class="forge-core is-done {% if result.won %}win{% else %}lose{% endif %}">
+          <span class="forge-core__ring" aria-hidden="true"></span>
+          <span class="forge-core__inner">
+            <span class="forge-core__mark">{% if result.won %}✓{% else %}✕{% endif %}</span>
+            <span class="forge-core__delta {% if result.profit >= 0 %}is-plus{% else %}is-minus{% endif %}">{% if result.profit >= 0 %}+{% endif %}{{ result.profit|fmt }}</span>
+          </span>
+        </div>
+      {% elif can_run %}
+        <form method="post" action="{% url 'kontrakt-play' %}" class="forge-core-form">{% csrf_token %}
+          {% for u in picked %}<input type="hidden" name="pick" value="{{ u }}" />{% endfor %}
+          <button class="forge-core is-live" type="submit">
+            <span class="forge-core__ring" aria-hidden="true"></span>
+            <span class="forge-core__inner">
+              <span class="forge-core__stake"><img class="coin-img" src="/images/coin.png" alt="" /> {{ total|fmt }}</span>
+              <span class="forge-core__cta">{{ S.con_ignite }}</span>
+            </span>
+          </button>
+        </form>
+      {% else %}
+        <div class="forge-core is-idle">
+          <span class="forge-core__ring" aria-hidden="true"></span>
+          <span class="forge-core__inner">
+            <span class="forge-core__stake"><img class="coin-img" src="/images/coin.png" alt="" /> {{ total|fmt }}</span>
+            <span class="forge-core__cta forge-core__cta--muted">{{ S.con_await }}</span>
+          </span>
+        </div>
+      {% endif %}
+      {% if not result and can_run %}<a class="forge-clear" href="{% url 'kontraktlar' %}">{{ S.con_clear }}</a>{% endif %}
+      {% if not result and not can_run %}<div class="forge-hint">{{ pick_hint }}</div>{% endif %}
+    </div>
+
+    <!-- OUTCOME bay -->
+    <div class="forge-bay forge-bay--out">
+      <div class="forge-bay__label">{{ S.con_outcome_bay }}</div>
+      <div class="forge-outcome">
+        {% if result %}
+          <div class="forge-out-card ss-con-pop" style="--rc:{{ result.output.color }}">
+            <div class="forge-out-card__art"><img src="{{ result.output.img|img }}" alt="" loading="lazy" /></div>
+            <div class="forge-out-card__name">{{ result.output.name }}</div>
+            <div class="forge-out-card__val"><img class="coin-img" src="/images/coin.png" alt="" /> {{ result.out_value|fmt }}</div>
+          </div>
+        {% else %}
+          <div class="forge-ghost" aria-hidden="true">?</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if result %}
+  <div class="forge-banner ss-con-fade {% if result.won %}is-win{% else %}is-lose{% endif %}">
+    <span class="forge-banner__txt">{% if result.won %}{{ S.con_result_win|cut:'{name}' }}{{ result.output.name }}{% else %}{{ S.con_result_lose|cut:'{name}' }}{{ result.output.name }}{% endif %}</span>
+    <a class="btn btn--teal" href="{% url 'kontraktlar' %}">{{ S.con_create_btn }}</a>
+  </div>
+  {% endif %}
+
+  <!-- ARMORY (inventory picker) -->
+  <div class="forge-armory">
+    <div class="forge-armory__head">
+      <span class="forge-armory__title">{{ S.con_your }}</span>
+      <span class="forge-armory__hint">{{ pick_hint }}</span>
+    </div>
+    <div class="forge-armory__grid">
+      {% for it in inv %}
+        <a class="armory-card {% if it.selected %}is-sel{% endif %} {% if it.disabled %}is-off{% endif %}"
+           href="{% if it.disabled %}#{% else %}{{ it.toggle_qs }}{% endif %}"
+           style="--rc:{{ it.skin.color }}" title="{{ it.skin.name }}">
+          <span class="armory-card__spine" aria-hidden="true"></span>
+          <span class="armory-card__art"><img src="{{ it.skin.img|img }}" alt="" loading="lazy" /></span>
+          <span class="armory-card__name">{{ it.skin.name }}</span>
+          <span class="armory-card__val"><img class="coin-img" src="/images/coin.png" alt="" /> {{ it.value|fmt }}</span>
+          <span class="armory-card__check" aria-hidden="true">✓</span>
+        </a>
+      {% empty %}
+        <div class="ss-empty ss-empty--big">
+          <div class="ss-soon">📦</div>
+          <p>{{ S.con_empty }}</p>
+          <a class="btn btn--teal" href="{% url 'home' %}#cases">{{ S.nav_keyslar }}</a>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+{% endblock %}

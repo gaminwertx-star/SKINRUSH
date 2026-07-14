@@ -115,6 +115,34 @@ img { max-width: 100%; }
 }
 .back-btn:hover { background: var(--panel-2); color: #fff; }
 
+/* give coins (donation top-up) */
+.give-box {
+  background: linear-gradient(180deg, var(--panel), var(--bg-2));
+  border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; margin: 8px 0 24px;
+}
+.give-box__title { font-size: 16px; font-weight: 800; }
+.give-box__sub { color: var(--muted); font-size: 13px; margin: 3px 0 14px; }
+.give-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.give-row .admin-input { min-width: 160px; flex: 1; }
+.admin-btn {
+  border: none; cursor: pointer; font-family: inherit; font-weight: 800; font-size: 14px;
+  padding: 10px 22px; border-radius: 10px; color: #fff;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  box-shadow: 0 6px 16px rgba(34,197,94,.28);
+}
+.admin-btn:hover { filter: brightness(1.07); }
+.admin-btn:disabled { opacity: .6; cursor: default; }
+.give-quick { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.give-chip {
+  cursor: pointer; font-family: inherit; font-weight: 700; font-size: 13px;
+  padding: 7px 14px; border-radius: 999px; color: var(--gold);
+  background: rgba(245,176,39,.1); border: 1px solid rgba(245,176,39,.35);
+}
+.give-chip:hover { background: rgba(245,176,39,.18); }
+.give-msg { font-size: 13px; font-weight: 700; margin-top: 12px; min-height: 18px; }
+.give-msg.is-ok { color: #4ade80; }
+.give-msg.is-err { color: #f87171; }
+
 /* stat cards */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
 .stat-card {

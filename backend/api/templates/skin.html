@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}{{ sname }} — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="skn" style="--rc:{{ color }}">
+  {% if back_case %}
+    <a class="skn-back" href="{% url 'case' back_case.slug %}">‹ {{ back_case.name }}</a>
+  {% else %}
+    <a class="skn-back" href="{% url 'home' %}#cases">{{ S.back }}</a>
+  {% endif %}
+
+  <!-- HERO -->
+  <div class="skn-hero">
+    <div class="skn-hero__art">
+      <img src="{{ skin.img|img }}" alt="{{ sname }}" />
+    </div>
+    <div class="skn-hero__meta">
+      {% if rarity %}<span class="skn-rarity">{{ rarity }}</span>{% endif %}
+      <h1 class="skn-weapon">{{ weapon }}</h1>
+      <div class="skn-finish">{{ finish }}</div>
+
+      {% if in_case %}
+        <div class="skn-price"><img class="coin-img" src="/images/coin.png" alt="" /> {{ in_case.price|fmt }}</div>
+        <div class="skn-tags">
+          <span class="skn-tag" style="--seg:{{ in_case.tone }}">{{ S.row_wear }}: <b>{{ in_case.wear|default:'—' }}</b></span>
+          {% if in_case.lo %}<span class="skn-tag">{{ S.skn_float }}: <b>{{ in_case.lo }}–{{ in_case.hi }}</b></span>{% endif %}
+          <span class="skn-tag">{{ S.skn_drop }}: <b>{% if in_case.chance >= 0.1 %}{{ in_case.chance|floatformat:2 }}{% else %}{{ in_case.chance|floatformat:3 }}{% endif %}%</b></span>
+        </div>
+        <div class="skn-hero__acts">
+          <form method="post" action="{% url 'skin-buy' %}" class="ss-inline">{% csrf_token %}
+            <input type="hidden" name="item" value="{{ in_case.item_id }}" />
+            <button class="btn btn--gold">{{ S.shop_buy }} · {{ in_case.price|fmt }}</button>
+          </form>
+          {% if back_case %}<a class="btn btn--outline" href="{% url 'case' back_case.slug %}">{{ S.skn_open_case }}</a>{% endif %}
+          <a class="skn-seeall" href="{% url 'skin' %}?name={{ sname|urlencode }}">{{ S.skn_see_all }} ›</a>
+        </div>
+      {% else %}
+        {% if min_price == max_price %}
+          <div class="skn-price"><img class="coin-img" src="/images/coin.png" alt="" /> {{ min_price|fmt }}</div>
+        {% else %}
+          <div class="skn-price"><img class="coin-img" src="/images/coin.png" alt="" /> {{ min_price|fmt }} <span class="skn-price__dash">–</span> {{ max_price|fmt }}</div>
+          <div class="skn-price__label">{{ S.skn_range }} · {{ conditions|length }} {{ S.row_wear|lower }}</div>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+
+  {% if not in_case %}
+    <!-- FLOAT LADDER (signature) -->
+    {% if ladder %}
+    <div class="skn-block">
+      <div class="skn-sec">{{ S.skn_conditions }}</div>
+      <div class="skn-ladder">
+        <div class="skn-ladder__ends"><span>0.00</span><span>{{ S.skn_float }}</span><span>1.00</span></div>
+        <div class="skn-ladder__bar">
+          {% for c in ladder %}
+            <a class="skn-seg" style="flex-basis:{{ c.width }}%; --seg:{{ c.tone }}"
+               href="{% url 'skin' %}?item={{ c.item_id }}&amp;case={{ c.case_id }}" title="{{ c.wear }} · {{ c.lo }}–{{ c.hi }}">
+              <span class="skn-seg__abbr">{{ c.abbr }}</span>
+              <span class="skn-seg__price">{{ c.price|fmt }}</span>
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="skn-conds">
+        {% for c in conditions %}
+          <div class="skn-cond" style="--seg:{{ c.tone }}">
+            <span class="skn-cond__dot"></span>
+            <span class="skn-cond__abbr">{{ c.abbr|default:'—' }}</span>
+            <span class="skn-cond__wear">{{ c.wear|default:S.skn_unavailable }}</span>
+            <span class="skn-cond__float">{% if c.lo %}{{ c.lo }} – {{ c.hi }}{% else %}—{% endif %}</span>
+            <span class="skn-cond__price"><img class="coin-img" src="/images/coin.png" alt="" /> {{ c.price|fmt }}</span>
+            <form class="skn-cond__buy" method="post" action="{% url 'skin-buy' %}">{% csrf_token %}
+              <input type="hidden" name="item" value="{{ c.item_id }}" />
+              <button class="btn btn--gold btn--sm">{{ S.shop_buy }}</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  {% endif %}
+
+  <!-- FOUND IN CASES -->
+  {% if cases %}
+  <div class="skn-block">
+    <div class="skn-sec">{{ S.skn_found_in }} <span class="skn-sec__n">({{ cases_count }})</span></div>
+    <div class="skn-cases">
+      {% for c in cases %}
+        <a class="skn-casechip" href="{% url 'case' c.slug %}">
+          <span class="skn-casechip__art"><img src="{{ c.image|img }}" alt="" loading="lazy" /></span>
+          <span class="skn-casechip__name">{{ c.name }}</span>
+          <span class="skn-casechip__price"><img class="coin-img" src="/images/coin.png" alt="" /> {{ c.price|fmt }}</span>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+{% endblock %}

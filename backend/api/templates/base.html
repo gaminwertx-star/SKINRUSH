@@ -1,0 +1,184 @@
+{% load skinrush_extras %}<!doctype html>
+<html lang="{{ LANG }}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}SKINRUSH — Keyslar{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css?v=41" />
+  <link rel="stylesheet" href="/ssr.css?v=26" />
+  <link rel="stylesheet" href="/polish.css?v=7" />
+</head>
+<body>
+
+  <!-- TOP DROPS STRIP -->
+  <div class="live-strip">
+    <div class="live-strip__labels">
+      <span class="live-strip__label live-strip__label--top">TOP</span>
+      <span class="live-strip__label">DROPS</span>
+    </div>
+    <div class="live-strip__viewport">
+      <div class="live-strip__track" id="topTrack">
+        {% for d in TOP_DROPS %}
+          <a class="drop drop-link" href="{% url 'skin' %}?name={{ d.name|urlencode }}" style="--rc:{{ d.color }}">
+            <img class="drop__img" src="{{ d.img|img }}" alt="" loading="lazy" />
+            <div class="drop__name">{{ d.name }}</div>
+          </a>
+        {% endfor %}
+        {% for d in TOP_DROPS %}
+          <a class="drop drop-link" href="{% url 'skin' %}?name={{ d.name|urlencode }}" style="--rc:{{ d.color }}">
+            <img class="drop__img" src="{{ d.img|img }}" alt="" loading="lazy" />
+            <div class="drop__name">{{ d.name }}</div>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header__inner">
+      <details class="ss-drawer">
+        <summary class="hdr-icon hdr-burger" aria-label="menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+        </summary>
+        <div class="ss-drawer__menu">
+          <a href="{% url 'home' %}" class="dnav {% if ACTIVE == 'bonuslar' %}is-active{% endif %}">{{ S.nav_bonuslar }}</a>
+          <a href="{% url 'home' %}#cases" class="dnav {% if ACTIVE == 'keyslar' %}is-active{% endif %}">{{ S.nav_keyslar }}</a>
+          <a href="{% url 'battles' %}" class="dnav {% if ACTIVE == 'janglar' %}is-active{% endif %}">{{ S.nav_janglar }}</a>
+          <a href="{% url 'kontraktlar' %}" class="dnav {% if ACTIVE == 'kontraktlar' %}is-active{% endif %}">{{ S.nav_kontraktlar }}</a>
+          <a href="{% url 'upgrade' %}" class="dnav {% if ACTIVE == 'yaxshilash' %}is-active{% endif %}">{{ S.nav_yaxshilash }}</a>
+          <a href="{% url 'dokon' %}" class="dnav {% if ACTIVE == 'dokon' %}is-active{% endif %}">{{ S.nav_dokon }}</a>
+          <a href="{% url 'inventory' %}" class="dnav {% if ACTIVE == 'inventar' %}is-active{% endif %}">{{ S.nav_inventar }}</a>
+          <a href="{% url 'dostlar' %}" class="dnav {% if ACTIVE == 'dostlar' %}is-active{% endif %}">{{ S.nav_dostlar }}</a>
+          <a href="{% url 'profile' %}" class="dnav {% if ACTIVE == 'profil' %}is-active{% endif %}">{{ S.prof_title }}</a>
+        </div>
+      </details>
+
+      <div class="header__left">
+        <a href="{% url 'home' %}" class="logo"><img class="logo-img" src="/images/logo.png" alt="SKINRUSH" /></a>
+        <div class="online">
+          <span class="online__dot"></span>
+          <span class="online__label">{{ S.online }}</span>
+          <span class="online__count">1 284</span>
+        </div>
+      </div>
+
+      <div class="header__right">
+        {% if ME.authenticated %}
+          <div class="user-chip">
+            <a class="user-chip__link" href="{% url 'profile' %}">
+              {% if ME.photo %}<img class="user-chip__avatar" src="{{ ME.photo }}" alt="" />{% endif %}
+              <div class="user-chip__info">
+                <span class="user-chip__name">{{ ME.name }}</span>
+                <span class="user-chip__coins"><img class="coin-img" src="/images/coin.png" alt="" /> <b>{{ ME.balance|fmt }}</b></span>
+              </div>
+            </a>
+            <form method="post" action="{% url 'logout' %}" class="ss-inline">{% csrf_token %}
+              <button class="user-chip__logout" title="{{ S.logout }}" aria-label="logout">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+              </button>
+            </form>
+          </div>
+        {% else %}
+          <span class="ss-coins-pill"><img class="coin-img" src="/images/coin.png" alt="" /> <b>{{ ME.balance|fmt }}</b></span>
+          <a class="btn btn--login" href="{% url 'login' %}">{{ S.login }}</a>
+        {% endif %}
+
+        <details class="ss-lang">
+          <summary class="lang">
+            <span class="lang__code">{{ LANG|upper }}</span>
+            <span class="lang__caret"><svg viewBox="0 0 12 8"><path d="M1 1.5 6 6.5 11 1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          </summary>
+          <div class="ss-lang__menu">
+            {% for l in LANGS %}
+              <a href="{% url 'setlang' l.code %}?next={{ request.path }}" class="{% if l.code == LANG %}is-active{% endif %}">{{ l.name }}</a>
+            {% endfor %}
+          </div>
+        </details>
+      </div>
+    </div>
+  </header>
+
+  <!-- NAV -->
+  <nav class="nav">
+    <div class="nav__inner">
+      <a class="nav__item {% if ACTIVE == 'bonuslar' %}is-active{% endif %}" href="{% url 'home' %}">{{ S.nav_bonuslar }}</a>
+      <a class="nav__item {% if ACTIVE == 'keyslar' %}is-active{% endif %}" href="{% url 'home' %}#cases">{{ S.nav_keyslar }}</a>
+      <a class="nav__item {% if ACTIVE == 'janglar' %}is-active{% endif %}" href="{% url 'battles' %}">{{ S.nav_janglar }}</a>
+      <a class="nav__item {% if ACTIVE == 'kontraktlar' %}is-active{% endif %}" href="{% url 'kontraktlar' %}">{{ S.nav_kontraktlar }}</a>
+      <a class="nav__item {% if ACTIVE == 'yaxshilash' %}is-active{% endif %}" href="{% url 'upgrade' %}">{{ S.nav_yaxshilash }}</a>
+      <a class="nav__item {% if ACTIVE == 'dokon' %}is-active{% endif %}" href="{% url 'dokon' %}">{{ S.nav_dokon }}</a>
+      <a class="nav__item {% if ACTIVE == 'inventar' %}is-active{% endif %}" href="{% url 'inventory' %}">{{ S.nav_inventar }}</a>
+      <a class="nav__item {% if ACTIVE == 'dostlar' %}is-active{% endif %}" href="{% url 'dostlar' %}">{{ S.nav_dostlar }}</a>
+    </div>
+  </nav>
+
+  {% if messages %}
+    <div class="ss-flash">
+      {% for m in messages %}<div class="ss-flash__item ss-flash--{{ m.tags }}">{{ m }}</div>{% endfor %}
+    </div>
+  {% endif %}
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer__inner">
+      <div class="footer__col">
+        <a href="{% url 'home' %}" class="logo logo--sm"><img class="logo-img" src="/images/logo.png" alt="SKINRUSH" /></a>
+        <p class="footer__desc">{{ S.footer_desc }}</p>
+      </div>
+      <div class="footer__col">
+        <h4>{{ S.footer_pages }}</h4>
+        <a href="{% url 'home' %}#cases">{{ S.footer_link_cases }}</a>
+        <a href="{% url 'kontraktlar' %}">{{ S.footer_link_contracts }}</a>
+        <a href="{% url 'dokon' %}">{{ S.footer_link_shop }}</a>
+        <a href="{% url 'inventory' %}">{{ S.footer_link_inventory }}</a>
+      </div>
+      <div class="footer__col">
+        <h4>{{ S.footer_help }}</h4>
+        <a href="#">{{ S.footer_faq }}</a>
+        <a href="#">{{ S.footer_support }}</a>
+        <a href="#">{{ S.footer_terms }}</a>
+      </div>
+      <div class="footer__col">
+        <h4>{{ S.footer_18_title }}</h4>
+        <p class="footer__desc footer__desc--sm">{{ S.footer_18 }}</p>
+      </div>
+    </div>
+    <div class="footer__bottom">{{ S.footer_bottom }}</div>
+  </footer>
+
+  <!-- MOBILE BOTTOM NAV -->
+  <nav class="mbar">
+    <a class="mbar__item {% if ACTIVE == 'bonuslar' %}is-active{% endif %}" href="{% url 'home' %}">
+      <span class="mbar__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg></span>
+      <span class="mbar__lbl">{{ S.nav_bonuslar }}</span>
+    </a>
+    <a class="mbar__item {% if ACTIVE == 'keyslar' %}is-active{% endif %}" href="{% url 'home' %}#cases">
+      <span class="mbar__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M3 12h18"/><path d="M8 8V6a4 4 0 0 1 8 0v2"/></svg></span>
+      <span class="mbar__lbl">Case</span>
+    </a>
+    <a class="mbar__center {% if ACTIVE == 'janglar' %}is-active{% endif %}" href="{% url 'battles' %}" aria-label="Battle">
+      <span class="mbar__center-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5 3 6V3h3l11.5 11.5"/><path d="m13 19 6-6"/><path d="m16 16 4 4"/></svg></span>
+      <span class="mbar__lbl">Battle</span>
+    </a>
+    <a class="mbar__item {% if ACTIVE == 'inventar' %}is-active{% endif %}" href="{% url 'inventory' %}">
+      <span class="mbar__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></span>
+      <span class="mbar__lbl">{{ S.nav_inventar }}</span>
+    </a>
+    <a class="mbar__item {% if ACTIVE == 'profil' %}is-active{% endif %}" href="{% url 'profile' %}">
+      <span class="mbar__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>
+      <span class="mbar__lbl">Profil</span>
+    </a>
+  </nav>
+
+  <script src="/sounds.js?v=2" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

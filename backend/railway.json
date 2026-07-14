@@ -5,7 +5,7 @@
     "buildCommand": "python manage.py collectstatic --noinput"
   },
   "deploy": {
-    "startCommand": "python manage.py migrate && python manage.py seed && python manage.py ensure_admin && python manage.py demo_users && gunicorn skinrush.wsgi:application --bind 0.0.0.0:$PORT",
+    "startCommand": "python manage.py migrate && python manage.py seed && python manage.py ensure_admin && gunicorn skinrush.wsgi:application --bind 0.0.0.0:$PORT",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }

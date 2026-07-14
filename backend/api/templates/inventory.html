@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}{{ S.nav_inventar }} — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="inventory-view">
+  <div class="cases-head">
+    <h2 class="section-title">{{ S.nav_inventar }}</h2>
+    <div class="inv-total">{{ S.row_value }}: <b>{{ total|fmt }}</b> <img class="coin-img" src="/images/coin.png" alt="coin" /></div>
+  </div>
+
+  {% if items %}
+    <div class="case-contents__grid inv-grid">
+      {% for it in items %}
+        <div class="inv-cell">
+          <a class="citem citem-link" href="{% url 'skin' %}?name={{ it.name|urlencode }}" style="--rc:{{ it.color }}" title="{{ it.name }}">
+            <div class="citem__wear">{{ it.wear|wearabbr }}</div>
+            <div class="citem__art"><img class="citem__img" src="{{ it.img|img }}" alt="" loading="lazy" /></div>
+            <div class="citem__weapon">{{ it.weapon }}</div>
+            <div class="citem__name">{{ it.finish }}</div>
+            <div class="citem__price"><img class="coin-img" src="/images/coin.png" alt="" /> {{ it.price|fmt }}</div>
+          </a>
+          <div class="inv-cell__acts">
+            <form method="post" action="{% url 'sell' %}" class="ss-inline">{% csrf_token %}
+              <input type="hidden" name="record_id" value="{{ it.id }}" />
+              <button class="btn btn--gold btn--sm">{{ S.sell_btn }} · +{{ it.price|fmt }}</button>
+            </form>
+            <a class="btn btn--outline btn--sm" href="{% url 'upgrade' %}?from={{ it.id }}">{{ S.nav_yaxshilash }}</a>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="ss-empty ss-empty--big">
+      Inventaringiz bo'sh. Keys oching va skinni "Olish" tugmasi bilan saqlang.
+      <a class="btn btn--teal" href="{% url 'home' %}#cases">{{ S.nav_keyslar }}</a>
+    </div>
+  {% endif %}
+</section>
+
+{% endblock %}

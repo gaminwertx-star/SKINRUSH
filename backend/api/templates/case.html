@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}{{ case.name }} — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="case-view">
+  <a class="case-view__back" href="{% url 'home' %}#cases">{{ S.back }}</a>
+
+  <div class="case-hero">
+    <div class="case-hero__art">
+      <img class="case-hero__crate" src="{{ case.image|img }}" alt="{{ case.name }}" />
+    </div>
+    <div class="case-hero__panel">
+      <h2 class="case-hero__title">{{ case.name }}</h2>
+      <div class="case-hero__price"><span>{{ case.price|fmt }}</span> <img class="coin-img" src="/images/coin.png" alt="coin" /></div>
+      {% if ME.balance < case.price %}
+        <button class="case-hero__open" disabled title="{{ S.not_enough }}">{{ S.open_btn }}</button>
+        <div class="ss-nofunds">{{ S.not_enough }} · <a href="{% url 'dokon' %}">{{ S.nav_dokon }}</a></div>
+      {% else %}
+      <form method="post" action="{% url 'case-open' case.slug %}" class="ss-openrow">{% csrf_token %}
+        <button class="case-hero__open">{{ S.open_btn }}</button>
+        <label class="ss-fastopt" title="{{ S.skip_btn }}">
+          <input type="checkbox" name="fast" value="1" {% if request.session.skip_anim %}checked{% endif %} />
+          <span class="ss-fastopt__dot" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 5l7 7-7 7M13 5l7 7-7 7" />
+            </svg>
+          </span>
+          <span class="ss-fastopt__sr">{{ S.skip_btn }}</span>
+        </label>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="case-contents">
+    <div class="case-contents__title">
+      <span>{{ S.contents_title }}</span> <span class="case-contents__count">({{ contents|length }})</span>
+    </div>
+    <div class="case-contents__grid">
+      {% for it in contents %}
+        <a class="citem citem-link" href="{% url 'skin' %}?item={{ it.id }}&amp;case={{ case.id }}" style="--rc:{{ it.color|default:'#b0c3d9' }}" title="{{ it.name }}">
+          <div class="citem__wear">{{ it.wear|wearabbr }}</div>
+          <div class="citem__chance">{% if it.chance >= 0.1 %}{{ it.chance|floatformat:2 }}{% else %}{{ it.chance|floatformat:3 }}{% endif %}%</div>
+          <div class="citem__art"><img class="citem__img" src="{{ it.img|img }}" alt="" loading="lazy" /></div>
+          <div class="citem__weapon">{{ it.weapon }}</div>
+          <div class="citem__name">{{ it.finish|default:it.name }}</div>
+          <div class="citem__price"><img class="coin-img" src="/images/coin.png" alt="" /> {{ it.price|fmt }}</div>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+{% endblock %}
