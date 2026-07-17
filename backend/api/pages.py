@@ -442,7 +442,6 @@ def inventory(request):
                   "active": k == tab} for k, lbl in INV_TABS],
         "tab": tab,
         "empty_text": INV_EMPTY[tab],
-        "total": sum(r["price"] for r in shown),
         # "Hammasini sotish" always acts on the whole sellable inventory, not on
         # whatever the current tab happens to show.
         "sell_all_count": len(sellable),
