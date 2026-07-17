@@ -39,6 +39,10 @@ def _api(method, payload):
         pass
 
 
+def _fmt(n):
+    return f"{int(n):,}".replace(",", " ")
+
+
 def _welcome(chat_id, first_name=""):
     name = (first_name or "").strip()
     hi = f"Salom, {name}! " if name else "Salom! "
@@ -117,10 +121,217 @@ def _esc(s):
             .replace("<", "&lt;").replace(">", "&gt;"))
 
 
+# ---------------------------------------------------------------- top-ups
+# A payment admin settles a top-up entirely inside Telegram: they are pinged,
+# they take the request, and from then on everything they and the player send
+# is relayed between the two chats. The canned replies below are buttons; they
+# can also just type, and the player will usually answer with a photo of the
+# receipt — which is why the relay copies whole messages rather than text.
+def notify_topup_request(chat_id, req_id, name, username, amount_sum, coins, bonus):
+    """Ping an admin that someone wants to buy coins."""
+    who = f"{_esc(name)}" + (f" (@{_esc(username)})" if username else "")
+    text = (
+        f"💰 <b>Yangi to'lov so'rovi</b>\n\n"
+        f"👤 {who}\n"
+        f"💵 <b>{_fmt(amount_sum)} so'm</b>\n"
+        f"🪙 {_fmt(coins)} coin" + (f"  (+{bonus}% bonus)" if bonus else "") + "\n\n"
+        f"So'rovni olish uchun tugmani bosing."
+    )
+    _api("sendMessage", {
+        "chat_id": chat_id, "text": text, "parse_mode": "HTML",
+        "reply_markup": {"inline_keyboard": [[
+            {"text": "🤝 Bog'lanish", "callback_data": f"tu:take:{req_id}"}
+        ]]},
+    })
+
+
+def _admin_keyboard(req):
+    return {"inline_keyboard": [
+        [{"text": "💳 Karta va summa", "callback_data": f"tu:card:{req.id}"}],
+        [{"text": "⏳ 2 daqiqada tushadi", "callback_data": f"tu:soon:{req.id}"}],
+        [{"text": "❌ Check noto'g'ri", "callback_data": f"tu:bad:{req.id}"}],
+        [{"text": f"✅ Balansni to'ldirish ({_fmt(req.coins)})",
+          "callback_data": f"tu:pay:{req.id}"}],
+        [{"text": "🔚 Aloqani uzish", "callback_data": f"tu:end:{req.id}"}],
+    ]}
+
+
+def _tpl(req, kind):
+    """The canned reply `kind`, worded for the player."""
+    if kind == "card":
+        a = req.admin
+        return (
+            f"💳 <b>To'lov uchun karta</b>\n\n"
+            f"<code>{_esc(a.card_number)}</code>\n"
+            f"<b>{_esc(a.card_holder)}</b>\n\n"
+            f"Shunga <b>{_fmt(req.amount_sum)} so'm</b> o'tkazib, "
+            f"check (skrinshot) yuboring."
+        )
+    if kind == "soon":
+        return (f"⏳ 2 daqiqada balansingiz <b>{_fmt(req.coins)}</b> coinga to'ladi.")
+    if kind == "bad":
+        return ("❌ Check noto'g'ri yoki soxta. Iltimos, qayta to'lov qiling.")
+    return ""
+
+
+def _take(req, chat_id):
+    """An admin picks up a waiting request."""
+    from .models import TopUpRequest
+
+    busy = (TopUpRequest.objects.filter(admin=req.admin,
+                                        status=TopUpRequest.CONNECTED)
+            .exclude(pk=req.pk).first())
+    if busy:
+        return (f"Avval @{busy.player.username or busy.player.display_name} bilan "
+                f"aloqani uzing — bir vaqtda bitta suhbat.")
+    if req.status != TopUpRequest.WAITING:
+        return "Bu so'rov allaqachon yopilgan yoki boshqa admin oldi."
+
+    req.status = TopUpRequest.CONNECTED
+    req.save(update_fields=["status", "updated_at"])
+    notify(req.player.telegram_id,
+           "🤝 <b>Admin siz bilan bog'landi.</b>\n\nSavollaringizni shu yerda yozing.")
+    _api("sendMessage", {
+        "chat_id": chat_id,
+        "text": (f"🤝 <b>{_esc(req.player.display_name)}</b> bilan ulandingiz.\n\n"
+                 f"💵 {_fmt(req.amount_sum)} so'm → 🪙 {_fmt(req.coins)} coin\n\n"
+                 f"Tugmalardan foydalaning yoki oddiy yozing — "
+                 f"hammasi userga yetadi."),
+        "parse_mode": "HTML",
+        "reply_markup": _admin_keyboard(req),
+    })
+    return None
+
+
+def _pay(req):
+    """Credit the coins the request promised. Idempotent via the status."""
+    from django.db import transaction
+
+    from .models import CoinPurchase, Player, TopUpRequest
+
+    with transaction.atomic():
+        fresh = TopUpRequest.objects.select_for_update().get(pk=req.pk)
+        if fresh.status == TopUpRequest.PAID:
+            return "Bu so'rov allaqachon to'langan."
+        p = Player.objects.select_for_update().get(pk=fresh.player_id)
+        p.balance += fresh.coins
+        p.coins_purchased += fresh.coins
+        p.save(update_fields=["balance", "coins_purchased", "last_seen"])
+        CoinPurchase.objects.create(
+            player=p, amount=fresh.coins,
+            note=f"To'lov · {_fmt(fresh.amount_sum)} so'm"
+                 + (f" · +{fresh.bonus_percent}%" if fresh.bonus_percent else ""))
+        fresh.status = TopUpRequest.PAID
+        fresh.save(update_fields=["status", "updated_at"])
+    notify(p.telegram_id,
+           f"✅ <b>Balansingiz to'ldirildi!</b>\n\n"
+           f"🪙 +{_fmt(fresh.coins)} coin\n"
+           f"Yangi balans: <b>{_fmt(p.balance)}</b>\n\nO'yin uchun rahmat!")
+    return None
+
+
+def _end(req):
+    from .models import TopUpRequest
+
+    if req.status != TopUpRequest.PAID:
+        req.status = TopUpRequest.CLOSED
+        req.save(update_fields=["status", "updated_at"])
+    notify(req.player.telegram_id, "🔚 Aloqa uzildi admin bilan.")
+
+
+def _live_request(chat_id):
+    """The connected request this chat is part of, and which side it is.
+
+    Returns (request, side) with side in {"admin", "player"}, or (None, None).
+    """
+    from .models import PaymentAdmin, Player, TopUpRequest
+
+    admin = PaymentAdmin.objects.filter(tg_chat_id=chat_id, is_active=True).first()
+    if admin:
+        req = (TopUpRequest.objects.filter(admin=admin, status=TopUpRequest.CONNECTED)
+               .select_related("player", "admin").first())
+        return (req, "admin") if req else (None, None)
+
+    player = Player.objects.filter(telegram_id=chat_id).first()
+    if player:
+        req = (TopUpRequest.objects.filter(player=player,
+                                           status=TopUpRequest.CONNECTED)
+               .select_related("player", "admin").first())
+        return (req, "player") if req else (None, None)
+    return None, None
+
+
+def _relay(update_msg, req, side):
+    """Copy a whole message across, so receipts/photos work, not just text."""
+    if side == "admin":
+        target = req.player.telegram_id
+    else:
+        target = req.admin.tg_chat_id if req.admin else None
+    if not target:
+        return
+    _api("copyMessage", {
+        "chat_id": target,
+        "from_chat_id": update_msg["chat"]["id"],
+        "message_id": update_msg["message_id"],
+    })
+
+
+def _handle_callback(cb):
+    from .models import PaymentAdmin, TopUpRequest
+
+    data = cb.get("data") or ""
+    chat_id = ((cb.get("message") or {}).get("chat") or {}).get("id")
+    cb_id = cb.get("id")
+
+    def answer(text="", alert=False):
+        _api("answerCallbackQuery", {"callback_query_id": cb_id, "text": text,
+                                     "show_alert": alert})
+
+    if not data.startswith("tu:"):
+        return answer()
+    try:
+        _, action, raw_id = data.split(":", 2)
+        req_id = int(raw_id)
+    except (ValueError, TypeError):
+        return answer()
+
+    req = (TopUpRequest.objects.filter(pk=req_id)
+           .select_related("player", "admin").first())
+    if req is None:
+        return answer("So'rov topilmadi", alert=True)
+    # Only the admin the request was routed to may act on it.
+    if not PaymentAdmin.objects.filter(tg_chat_id=chat_id, is_active=True,
+                                       pk=req.admin_id).exists():
+        return answer("Bu so'rov sizga tegishli emas", alert=True)
+
+    if action == "take":
+        err = _take(req, chat_id)
+        return answer(err or "Ulandingiz", alert=bool(err))
+
+    if req.status not in (TopUpRequest.CONNECTED, TopUpRequest.PAID):
+        return answer("Aloqa uzilgan", alert=True)
+
+    if action in ("card", "soon", "bad"):
+        notify(req.player.telegram_id, _tpl(req, action))
+        return answer("Yuborildi ✅")
+    if action == "pay":
+        err = _pay(req)
+        return answer(err or "Balans to'ldirildi ✅", alert=bool(err))
+    if action == "end":
+        _end(req)
+        _api("sendMessage", {"chat_id": chat_id, "text": "🔚 Aloqa uzildi."})
+        return answer("Aloqa uzildi")
+    return answer()
+
+
 @csrf_exempt
 @require_POST
 def webhook(request, secret=""):
-    """Receive updates from Telegram and reply to /start.
+    """Receive updates from Telegram.
+
+    Handles three things: ``/start`` (welcome + Mini App button), the payment
+    admin's inline buttons, and relaying anything else between a connected
+    admin/player pair.
 
     ``secret`` is the path component (obscurity); Telegram also echoes the
     configured secret in the ``X-Telegram-Bot-Api-Secret-Token`` header. Both are
@@ -136,12 +347,24 @@ def webhook(request, secret=""):
     except ValueError:
         return JsonResponse({"ok": True})
 
+    if update.get("callback_query"):
+        _handle_callback(update["callback_query"])
+        return JsonResponse({"ok": True})
+
     msg = update.get("message") or update.get("edited_message") or {}
     chat = msg.get("chat") or {}
     chat_id = chat.get("id")
     text = (msg.get("text") or "").strip()
+    if not chat_id:
+        return JsonResponse({"ok": True})
 
-    if chat_id and text.startswith("/start"):
+    if text.startswith("/start"):
         _welcome(chat_id, (msg.get("from") or {}).get("first_name", ""))
+        return JsonResponse({"ok": True})
+
+    # Anything else, from either side of a live top-up, is conversation.
+    req, side = _live_request(chat_id)
+    if req:
+        _relay(msg, req, side)
 
     return JsonResponse({"ok": True})

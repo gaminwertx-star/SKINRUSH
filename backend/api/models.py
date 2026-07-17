@@ -10,6 +10,18 @@ from django.utils.text import slugify
 
 STARTING_BALANCE = 1500  # coins granted to a newly registered player
 
+# Coin price. Quoted as a pack rather than a per-coin rate so the number the
+# players are told ("22 000 so'm = 25 000 coin") is the number in the code.
+TOPUP_PACK_SUM = 22_000     # so'm
+TOPUP_PACK_COINS = 25_000   # coins that buys
+TOPUP_MIN_SUM = 5_000       # smallest top-up we take
+
+
+def coins_for_sum(amount_sum, bonus_percent=0):
+    """Coins a player gets for `amount_sum` so'm, including any promo bonus."""
+    base = amount_sum * TOPUP_PACK_COINS / TOPUP_PACK_SUM
+    return int(round(base * (100 + bonus_percent) / 100))
+
 
 class Case(models.Model):
     """A case in the catalog (real cs-shot.pro lineup)."""
@@ -248,6 +260,88 @@ class WithdrawRequest(models.Model):
 
     def __str__(self):
         return f"{self.record.skin_name} -> {self.player} ({self.status})"
+
+
+class PaymentAdmin(models.Model):
+    """A person who takes real money and tops players up by hand.
+
+    Payments are settled off-platform: the player transfers so'm to this
+    admin's own card and sends a receipt over the bot. Nothing here touches a
+    payment provider — the site only introduces the two of them and records the
+    outcome.
+    """
+
+    tg_chat_id = models.BigIntegerField(unique=True, db_index=True)
+    name = models.CharField(max_length=120)
+    card_number = models.CharField(max_length=32)
+    card_holder = models.CharField(max_length=120)
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name or f"admin {self.tg_chat_id}"
+
+
+class PromoCode(models.Model):
+    """A top-up bonus code. The admin picks both the code and the percentage —
+    nothing here is hard-coded to a particular code or a particular bonus."""
+
+    code = models.CharField(max_length=32, unique=True, db_index=True)  # stored upper-case
+    bonus_percent = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    uses = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def save(self, *args, **kwargs):
+        self.code = (self.code or "").strip().upper()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.code} (+{self.bonus_percent}%)"
+
+
+class TopUpRequest(models.Model):
+    """A player asking to buy coins, and the conversation that settles it.
+
+    `waiting`  — filed, the chosen admin has been pinged but has not opened it
+    `connected`— admin took it; the two are relaying messages through the bot
+    `paid`     — admin credited the coins
+    `closed`   — admin hung up (or it was abandoned) without payment
+    """
+
+    WAITING, CONNECTED, PAID, CLOSED = "waiting", "connected", "paid", "closed"
+    STATUSES = [
+        (WAITING, "Kutilmoqda"), (CONNECTED, "Aloqada"),
+        (PAID, "To'landi"), (CLOSED, "Yopilgan"),
+    ]
+    # While a request is in one of these the player has a live conversation, so
+    # they cannot open a second one.
+    OPEN_STATUSES = (WAITING, CONNECTED)
+
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="topups")
+    admin = models.ForeignKey(PaymentAdmin, on_delete=models.SET_NULL, null=True,
+                              blank=True, related_name="topups")
+    amount_sum = models.BigIntegerField()          # so'm the player typed
+    coins = models.BigIntegerField()               # coins promised, bonus included
+    promo = models.ForeignKey(PromoCode, on_delete=models.SET_NULL, null=True,
+                              blank=True, related_name="topups")
+    bonus_percent = models.IntegerField(default=0)  # snapshot: promos can change
+    status = models.CharField(max_length=16, default=WAITING, choices=STATUSES,
+                              db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.player} · {self.amount_sum} so'm ({self.status})"
 
 
 class CoinPurchase(models.Model):

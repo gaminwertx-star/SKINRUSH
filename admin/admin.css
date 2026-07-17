@@ -279,6 +279,15 @@ tbody tr.clickable:hover { background: var(--panel-2); }
 .modal__acts { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
 
 
+.alert-card--bad {
+  background: rgba(244,63,94,.08); border-color: rgba(244,63,94,.35);
+}
+.alert-card--bad .alert-card__title { color: var(--pink); }
+.alert-card--bad .admin-btn {
+  background: linear-gradient(135deg, #f43f5e, #be123c); box-shadow: none;
+}
+
+
 @media (max-width: 720px) {
   .wd-card { grid-template-columns: 1fr; gap: 12px; }
   .wd-card__side { align-items: stretch; }

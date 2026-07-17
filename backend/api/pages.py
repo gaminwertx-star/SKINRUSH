@@ -13,7 +13,7 @@ from django.contrib import messages
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -26,9 +26,11 @@ from .auth_account import EMAIL_RE, USERNAME_RE, _norm_phone
 from .auth_telegram import current_player, verify_webapp
 from .templatetags.skinrush_extras import img as _img_url
 from .models import (
-    Battle, Case, CaseItem, Drop, OpenRecord, Player, WithdrawRequest,
+    TOPUP_MIN_SUM, TOPUP_PACK_COINS, TOPUP_PACK_SUM,
+    Battle, Case, CaseItem, Drop, OpenRecord, PaymentAdmin, Player, PromoCode,
+    TopUpRequest, WithdrawRequest, coins_for_sum,
 )
-from .telegram_bot import notify_withdraw
+from .telegram_bot import notify_topup_request, notify_withdraw
 from .views import (
     DAILY_DAYS, DAILY_TASKS, UPGRADE_EDGE,
     _battle_card, _card_cases, _clamp, _credit, _daily_days, _int,
@@ -518,6 +520,114 @@ def sell_all(request):
     _credit(request, None, total)
     messages.success(request, f"{len(inv)} ta skin sotildi · +{total:,}".replace(",", " "))
     return redirect("inventory")
+
+
+# ---------------------------------------------------------------- top-up
+def _promo_for(code):
+    """The live promo matching `code`, or None. Codes are case-insensitive."""
+    code = (code or "").strip().upper()
+    if not code:
+        return None
+    return PromoCode.objects.filter(code=code, is_active=True).first()
+
+
+def toldirish(request):
+    """Buy coins. The player names an amount, optionally applies a promo, picks
+    an admin, and the admin then settles it by hand over the bot."""
+    player = current_player(request)
+    if not player:
+        messages.error(request, "Balansni to'ldirish uchun hisobingizga kiring")
+        return redirect("login")
+
+    admins = list(PaymentAdmin.objects.filter(is_active=True))
+    code = (request.GET.get("promo") or "").strip().upper()
+    promo = _promo_for(code)
+    return render(request, "toldirish.html", {
+        "ACTIVE": "dokon",
+        "pack_sum": TOPUP_PACK_SUM, "pack_coins": TOPUP_PACK_COINS,
+        "min_sum": TOPUP_MIN_SUM,
+        "quick": [TOPUP_MIN_SUM, 10_000, TOPUP_PACK_SUM, 50_000, 100_000],
+        "admins": admins,
+        "promo_code": code,
+        "promo": promo,
+        "promo_bad": bool(code) and promo is None,
+        "active": _active_topup(player),
+        # The whole point is that an admin messages them on Telegram, so an
+        # account with no Telegram linked cannot be served here.
+        "no_telegram": not player.telegram_id,
+    })
+
+
+def _active_topup(player):
+    return (player.topups.filter(status__in=TopUpRequest.OPEN_STATUSES)
+            .select_related("admin").first())
+
+
+def toldirish_promo(request):
+    """Live promo lookup for the amount box (the form re-checks on submit)."""
+    promo = _promo_for(request.GET.get("code"))
+    if not promo:
+        return JsonResponse({"ok": False})
+    return JsonResponse({"ok": True, "code": promo.code,
+                         "bonus_percent": promo.bonus_percent})
+
+
+@require_POST
+def toldirish_create(request):
+    player = current_player(request)
+    if not player:
+        return redirect("login")
+    if not player.telegram_id:
+        messages.error(request, "To'ldirish uchun Telegram orqali kiring — "
+                                "admin siz bilan Telegramda bog'lanadi.")
+        return redirect("toldirish")
+
+    amount = _int(request.POST.get("amount_sum")) or 0
+    if amount < TOPUP_MIN_SUM:
+        messages.error(request, f"Eng kam to'ldirish {TOPUP_MIN_SUM:,} so'm".replace(",", " "))
+        return redirect("toldirish")
+
+    admin = PaymentAdmin.objects.filter(
+        pk=_int(request.POST.get("admin_id")), is_active=True).first()
+    if admin is None:
+        admin = PaymentAdmin.objects.filter(is_active=True).first()
+    if admin is None:
+        messages.error(request, "Hozircha to'lov adminlari mavjud emas, "
+                                "keyinroq urinib ko'ring")
+        return redirect("toldirish")
+
+    # Re-check the promo server-side; the page only ever displayed it.
+    promo = _promo_for(request.POST.get("promo"))
+    bonus = promo.bonus_percent if promo else 0
+    coins = coins_for_sum(amount, bonus)
+
+    with transaction.atomic():
+        if player.topups.filter(status__in=TopUpRequest.OPEN_STATUSES).exists():
+            messages.error(request, "Sizda hozircha faol so'rov bor, iltimos kuting")
+            return redirect("toldirish")
+        req = TopUpRequest.objects.create(
+            player=player, admin=admin, amount_sum=amount, coins=coins,
+            promo=promo, bonus_percent=bonus)
+        if promo:
+            PromoCode.objects.filter(pk=promo.pk).update(uses=F("uses") + 1)
+
+    notify_topup_request(admin.tg_chat_id, req.id, player.display_name,
+                         player.username, amount, coins, bonus)
+    messages.success(request, "So'rovingiz yuborildi ✅. Adminimiz 5 daqiqa "
+                              "ichida Telegramda siz bilan bog'lanadi.")
+    return redirect("toldirish")
+
+
+@require_POST
+def toldirish_cancel(request):
+    """Let a player drop a request the admin has not picked up."""
+    player = current_player(request)
+    if not player:
+        return redirect("login")
+    player.topups.filter(status=TopUpRequest.WAITING).update(
+        status=TopUpRequest.CLOSED)
+    messages.success(request, "So'rov bekor qilindi")
+    return redirect("toldirish")
 
 
 # ---------------------------------------------------------------- withdraw

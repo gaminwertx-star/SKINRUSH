@@ -19,7 +19,8 @@ from rest_framework.response import Response
 
 from .authentication import CsrfExemptSession
 from .models import (
-    Case, CaseItem, CoinPurchase, Drop, OpenRecord, Player, WithdrawRequest,
+    Case, CaseItem, CoinPurchase, Drop, OpenRecord, PaymentAdmin, Player,
+    PromoCode, TopUpRequest, WithdrawRequest,
 )
 from .telegram_bot import notify_withdraw
 
@@ -88,6 +89,12 @@ def admin_stats(request):
             status=WithdrawRequest.PENDING).count(),
         "withdraws_pending_24h": WithdrawRequest.objects.filter(
             status=WithdrawRequest.PENDING, created_at__gte=day_ago).count(),
+        # Top-ups nobody has picked up yet — a player is sitting there waiting.
+        "topups_waiting": TopUpRequest.objects.filter(
+            status=TopUpRequest.WAITING).count(),
+        "topups_waiting_24h": TopUpRequest.objects.filter(
+            status=TopUpRequest.WAITING, created_at__gte=day_ago).count(),
+        "payment_admins": PaymentAdmin.objects.filter(is_active=True).count(),
     })
 
 
@@ -167,6 +174,137 @@ def _advance(pk, allowed_from, new_status, reason=""):
     # back a status the admin already committed.
     notify_withdraw(w.player.telegram_id, new_status, w.record.skin_name, reason)
     return Response({"ok": True, "row": _withdraw_row(w)})
+
+
+# ---------- payment admins ----------
+def _padmin_row(a):
+    return {
+        "id": a.id, "tg_chat_id": a.tg_chat_id, "name": a.name,
+        "card_number": a.card_number, "card_holder": a.card_holder,
+        "is_active": a.is_active,
+        "topups": getattr(a, "n_topups", None),
+        "created_at": a.created_at.isoformat(),
+    }
+
+
+@api_view(["GET", "POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_payment_admins(request):
+    """List, or add, the people who take real payments over the bot."""
+    if request.method == "GET":
+        qs = PaymentAdmin.objects.annotate(n_topups=Count("topups"))
+        return Response([_padmin_row(a) for a in qs])
+
+    try:
+        chat_id = int(str(request.data.get("tg_chat_id")).strip())
+    except (TypeError, ValueError):
+        return Response({"error": "Telegram chat ID raqam bo'lishi kerak"}, status=400)
+    name = (request.data.get("name") or "").strip()
+    card = (request.data.get("card_number") or "").strip()
+    holder = (request.data.get("card_holder") or "").strip()
+    if not (name and card and holder):
+        return Response({"error": "Ism, karta raqami va karta egasini to'ldiring"},
+                        status=400)
+    if PaymentAdmin.objects.filter(tg_chat_id=chat_id).exists():
+        return Response({"error": "Bu chat ID allaqachon qo'shilgan"}, status=400)
+
+    a = PaymentAdmin.objects.create(tg_chat_id=chat_id, name=name,
+                                    card_number=card, card_holder=holder)
+    return Response({"ok": True, "row": _padmin_row(a)})
+
+
+@api_view(["POST", "DELETE"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_payment_admin_detail(request, pk):
+    """DELETE removes an admin; POST toggles them on/off."""
+    a = PaymentAdmin.objects.filter(pk=pk).first()
+    if a is None:
+        return Response({"error": "Topilmadi"}, status=404)
+    if request.method == "DELETE":
+        # A live conversation would be orphaned — close it first.
+        TopUpRequest.objects.filter(
+            admin=a, status__in=TopUpRequest.OPEN_STATUSES
+        ).update(status=TopUpRequest.CLOSED)
+        a.delete()
+        return Response({"ok": True})
+    a.is_active = not a.is_active
+    a.save(update_fields=["is_active"])
+    return Response({"ok": True, "row": _padmin_row(a)})
+
+
+# ---------- promo codes ----------
+def _promo_row(p):
+    return {"id": p.id, "code": p.code, "bonus_percent": p.bonus_percent,
+            "is_active": p.is_active, "uses": p.uses,
+            "created_at": p.created_at.isoformat()}
+
+
+@api_view(["GET", "POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_promos(request):
+    if request.method == "GET":
+        return Response([_promo_row(p) for p in PromoCode.objects.all()])
+
+    code = (request.data.get("code") or "").strip().upper()
+    if not code:
+        return Response({"error": "Promokodni yozing"}, status=400)
+    try:
+        bonus = int(request.data.get("bonus_percent"))
+    except (TypeError, ValueError):
+        return Response({"error": "Bonus foizini raqam bilan yozing"}, status=400)
+    if not 0 < bonus <= 500:
+        return Response({"error": "Bonus 1% dan 500% gacha bo'lsin"}, status=400)
+    if PromoCode.objects.filter(code=code).exists():
+        return Response({"error": "Bunday promokod bor"}, status=400)
+
+    p = PromoCode.objects.create(code=code, bonus_percent=bonus)
+    return Response({"ok": True, "row": _promo_row(p)})
+
+
+@api_view(["POST", "DELETE"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_promo_detail(request, pk):
+    p = PromoCode.objects.filter(pk=pk).first()
+    if p is None:
+        return Response({"error": "Topilmadi"}, status=404)
+    if request.method == "DELETE":
+        p.delete()
+        return Response({"ok": True})
+    p.is_active = not p.is_active
+    p.save(update_fields=["is_active"])
+    return Response({"ok": True, "row": _promo_row(p)})
+
+
+# ---------- top-up requests ----------
+@api_view(["GET"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_topups(request):
+    status = (request.query_params.get("status") or "").strip()
+    qs = TopUpRequest.objects.select_related("player", "admin", "promo")
+    if status and status != "all":
+        qs = qs.filter(status=status)
+    counts = dict(TopUpRequest.objects.values_list("status")
+                  .annotate(n=Count("id")).values_list("status", "n"))
+    rows = [{
+        "id": t.id,
+        "player": {"id": t.player_id, "name": t.player.display_name,
+                   "username": t.player.username,
+                   "telegram_id": t.player.telegram_id},
+        "admin": t.admin.name if t.admin else None,
+        "amount_sum": t.amount_sum, "coins": t.coins,
+        "promo": t.promo.code if t.promo else None,
+        "bonus_percent": t.bonus_percent,
+        "status": t.status,
+        "created_at": t.created_at.isoformat(),
+        "updated_at": t.updated_at.isoformat(),
+    } for t in qs[:300]]
+    return Response({"rows": rows, "counts": counts,
+                     "total": TopUpRequest.objects.count()})
 
 
 @api_view(["POST"])

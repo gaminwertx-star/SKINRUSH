@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}Balansni to'ldirish — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="tu">
+  <div class="cases-head">
+    <h2 class="section-title">Balansni to'ldirish</h2>
+  </div>
+
+  {% if no_telegram %}
+    <div class="tu-alert tu-alert--warn">
+      <b>Telegram orqali kiring</b>
+      <p>To'lov admini siz bilan Telegramda bog'lanadi, shuning uchun hisobingiz
+         Telegramga ulangan bo'lishi kerak. Botdagi «O'ynash» tugmasi orqali kiring.</p>
+    </div>
+
+  {% elif active %}
+    <div class="tu-panel">
+      <div class="tu-live">
+        <span class="tu-live__dot"></span>
+        {% if active.status == 'waiting' %}
+          <b>So'rovingiz yuborildi</b>
+        {% else %}
+          <b>Admin siz bilan bog'landi</b>
+        {% endif %}
+      </div>
+      <div class="tu-sum"><span>Summa</span><b>{{ active.amount_sum|fmt }} so'm</b></div>
+      <div class="tu-sum"><span>Hisobga tushadi</span>
+        <b class="tu-gold">{{ active.coins|fmt }}
+          <img class="coin-img" src="/images/coin.png" alt="" /></b></div>
+      {% if active.bonus_percent %}
+        <div class="tu-sum"><span>Bonus</span><b class="tu-green">+{{ active.bonus_percent }}%</b></div>
+      {% endif %}
+      {% if active.admin %}
+        <div class="tu-sum"><span>Admin</span><b>{{ active.admin.name }}</b></div>
+      {% endif %}
+      <p class="tu-hint">
+        {% if active.status == 'waiting' %}
+          Adminimiz 5 daqiqa ichida Telegramda siz bilan bog'lanadi.
+          Botni ochiq qoldiring.
+        {% else %}
+          Suhbat Telegram botida davom etmoqda — check'ni o'sha yerga yuboring.
+        {% endif %}
+      </p>
+      {% if active.status == 'waiting' %}
+        <form method="post" action="{% url 'toldirish-cancel' %}">{% csrf_token %}
+          <button class="tu-cancel" type="submit">So'rovni bekor qilish</button>
+        </form>
+      {% endif %}
+    </div>
+
+  {% elif not admins %}
+    <div class="tu-alert tu-alert--warn">
+      <b>Hozircha to'lov adminlari mavjud emas</b>
+      <p>Iltimos, keyinroq urinib ko'ring.</p>
+    </div>
+
+  {% else %}
+    <form class="tu-panel" method="post" action="{% url 'toldirish-create' %}" id="tuForm">
+      {% csrf_token %}
+
+      <!-- amount -->
+      <label class="tu-field">
+        <span class="tu-field__label">To'ldirish</span>
+        <span class="tu-field__row">
+          <input class="tu-input" type="number" name="amount_sum" id="tuAmount"
+                 inputmode="numeric" min="{{ min_sum }}" step="1000"
+                 value="{{ min_sum }}" required />
+          <span class="tu-unit">so'm</span>
+        </span>
+      </label>
+      <div class="tu-quick">
+        {% for a in quick %}
+          <button class="tu-chip" type="button" data-amt="{{ a }}">{{ a|fmt }}</button>
+        {% endfor %}
+      </div>
+
+      <!-- what you get -->
+      <div class="tu-get">
+        <div class="tu-get__label">Hisobga tushadi</div>
+        <div class="tu-get__row">
+          <span class="tu-get__coins" id="tuCoins">0</span>
+          <img class="coin-img tu-get__ico" src="/images/coin.png" alt="coin" />
+        </div>
+        <div class="tu-get__bonus" id="tuBonus" {% if not promo %}hidden{% endif %}>
+          + <span id="tuBonusPct">{{ promo.bonus_percent|default:0 }}</span>% bonus
+        </div>
+      </div>
+
+      <!-- promo -->
+      <div class="tu-promo">
+        <input class="tu-promo__input" type="text" name="promo" id="tuPromo"
+               placeholder="Promokod (ixtiyoriy)" value="{{ promo_code }}"
+               autocomplete="off" spellcheck="false" />
+        <button class="tu-promo__btn" type="button" id="tuPromoBtn">Tekshirish</button>
+      </div>
+      <div class="tu-promo__msg" id="tuPromoMsg">
+        {% if promo %}<span class="tu-green">{{ promo.code }} — +{{ promo.bonus_percent }}% bonus</span>
+        {% elif promo_bad %}<span class="tu-red">Bunday promokod yo'q</span>{% endif %}
+      </div>
+
+      <!-- admin picker -->
+      {% if admins|length > 1 %}
+        <div class="tu-admins">
+          <div class="tu-field__label">Admin tanlang</div>
+          {% for a in admins %}
+            <label class="tu-admin">
+              <input type="radio" name="admin_id" value="{{ a.id }}"
+                     {% if forloop.first %}checked{% endif %} />
+              <span class="tu-admin__dot"></span>
+              <span class="tu-admin__name">{{ a.name }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      {% else %}
+        <input type="hidden" name="admin_id" value="{{ admins.0.id }}" />
+      {% endif %}
+
+      <button class="tu-submit" type="submit">Hisobni to'ldirish</button>
+      <p class="tu-note">
+        Tugmani bosgach, admin Telegramda siz bilan bog'lanadi va karta raqamini
+        yuboradi. Eng kam summa — {{ min_sum|fmt }} so'm.
+      </p>
+    </form>
+  {% endif %}
+</section>
+
+<script>
+  (function () {
+    var form = document.getElementById('tuForm');
+    if (!form) return;
+    var PACK_SUM = {{ pack_sum }}, PACK_COINS = {{ pack_coins }}, MIN = {{ min_sum }};
+    var amount = document.getElementById('tuAmount');
+    var coinsOut = document.getElementById('tuCoins');
+    var bonusBox = document.getElementById('tuBonus');
+    var bonusPct = document.getElementById('tuBonusPct');
+    var promoIn = document.getElementById('tuPromo');
+    var promoBtn = document.getElementById('tuPromoBtn');
+    var promoMsg = document.getElementById('tuPromoMsg');
+    var bonus = {{ promo.bonus_percent|default:0 }};
+
+    var fmt = function (n) { return Math.round(n).toLocaleString('ru-RU').replace(/,/g, ' '); };
+
+    function render() {
+      var sum = parseInt(amount.value, 10) || 0;
+      // mirrors models.coins_for_sum — the server recomputes it on submit
+      var coins = Math.round(sum * PACK_COINS / PACK_SUM * (100 + bonus) / 100);
+      coinsOut.textContent = fmt(coins);
+      bonusBox.hidden = !bonus;
+      bonusPct.textContent = bonus;
+    }
+
+    amount.addEventListener('input', render);
+    document.querySelectorAll('.tu-chip').forEach(function (b) {
+      b.addEventListener('click', function () { amount.value = b.dataset.amt; render(); });
+    });
+
+    promoBtn.addEventListener('click', function () {
+      var code = promoIn.value.trim();
+      if (!code) { bonus = 0; promoMsg.innerHTML = ''; render(); return; }
+      promoBtn.disabled = true;
+      fetch('/toldirish/promo/?code=' + encodeURIComponent(code))
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          promoBtn.disabled = false;
+          if (d.ok) {
+            bonus = d.bonus_percent;
+            promoMsg.innerHTML = '<span class="tu-green">' + d.code +
+              ' — +' + d.bonus_percent + '% bonus</span>';
+          } else {
+            bonus = 0;
+            promoMsg.innerHTML = '<span class="tu-red">Bunday promokod yo\'q</span>';
+          }
+          render();
+        })
+        .catch(function () { promoBtn.disabled = false; });
+    });
+
+    form.addEventListener('submit', function (e) {
+      if ((parseInt(amount.value, 10) || 0) < MIN) {
+        e.preventDefault();
+        promoMsg.innerHTML = '<span class="tu-red">Eng kam ' + fmt(MIN) + ' so\'m</span>';
+      }
+    });
+
+    render();
+  })();
+</script>
+
+{% endblock %}

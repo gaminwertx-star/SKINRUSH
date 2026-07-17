@@ -7,6 +7,11 @@ const jpost = (u, body) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body || {}),
   }).then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => ({})) }));
+const jdel = (u) =>
+  fetch(u, { method: "DELETE" }).then(async (r) => ({
+    ok: r.ok,
+    data: await r.json().catch(() => ({})),
+  }));
 
 const IMG = (h) =>
   !h ? "" : h.startsWith("http") ? h : "https://community.akamai.steamstatic.com/economy/image/" + h;
@@ -79,6 +84,9 @@ function switchView(view) {
   if (view === "dashboard") renderDashboard();
   else if (view === "users") renderUsers();
   else if (view === "withdraws") renderWithdraws();
+  else if (view === "topups") renderTopups();
+  else if (view === "payadmins") renderPayAdmins();
+  else if (view === "promos") renderPromos();
   else if (view === "cases") renderCases();
 }
 
@@ -94,6 +102,7 @@ async function renderDashboard() {
     <div class="loading">Yuklanmoqda…</div>`;
   const s = await jget(`${API}/stats/`);
   setWithdrawBadge(s.withdraws_pending);
+  setTopupBadge(s.topups_waiting);
   const cards = [
     { n: s.players, label: "Foydalanuvchilar", c: "var(--green)" },
     { n: s.cases, label: "Keyslar", c: "var(--violet)" },
@@ -107,6 +116,22 @@ async function renderDashboard() {
       <div class="page-title">Dashboard</div>
       <div class="page-sub">Umumiy ko'rsatkichlar</div>
     </div></div>
+    ${s.topups_waiting ? `
+      <div class="alert-card" id="tuAlert">
+        <div>
+          <div class="alert-card__title">${fmt(s.topups_waiting)} ta to'lov so'rovi kutmoqda</div>
+          <div class="alert-card__sub">Oxirgi 24 soatda: <b>${fmt(s.topups_waiting_24h)}</b> ta yangi so'rov</div>
+        </div>
+        <button class="admin-btn">Ko'rish</button>
+      </div>` : ""}
+    ${!s.payment_admins ? `
+      <div class="alert-card alert-card--bad" id="paAlert">
+        <div>
+          <div class="alert-card__title">To'lov admini yo'q</div>
+          <div class="alert-card__sub">Admin qo'shilmaguncha userlar balansni to'ldira olmaydi.</div>
+        </div>
+        <button class="admin-btn">Qo'shish</button>
+      </div>` : ""}
     ${s.withdraws_pending ? `
       <div class="alert-card" id="wdAlert">
         <div>
@@ -122,8 +147,13 @@ async function renderDashboard() {
           <div class="stat-card__label">${c.label}</div>
         </div>`).join("")}
     </div>`;
-  const alert = document.getElementById("wdAlert");
-  if (alert) alert.addEventListener("click", () => switchView("withdraws"));
+  const go = (id, view) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("click", () => switchView(view));
+  };
+  go("wdAlert", "withdraws");
+  go("tuAlert", "topups");
+  go("paAlert", "payadmins");
 }
 
 // ---------- withdraws ----------
@@ -276,6 +306,294 @@ async function runWithdrawAction(id, act, body, btn) {
   return false;
 }
 
+// ---------- top-up requests ----------
+const TU_STATUS = {
+  waiting:   { label: "Kutilmoqda", c: "var(--gold)" },
+  connected: { label: "Aloqada",    c: "var(--blue)" },
+  paid:      { label: "To'landi",   c: "var(--green)" },
+  closed:    { label: "Yopilgan",   c: "var(--pink)" },
+};
+let tuFilter = "all";
+
+function setTopupBadge(n) {
+  const b = document.getElementById("tuBadge");
+  if (!b) return;
+  b.textContent = fmt(n);
+  b.hidden = !n;
+}
+
+async function renderTopups() {
+  main.innerHTML = `
+    <div class="page-head"><div>
+      <div class="page-title">To'lov so'rovlari</div>
+      <div class="page-sub">Coin sotib olish — adminlar Telegramda hal qiladi</div>
+    </div></div>
+    <div class="filter-row" id="tuFilters"></div>
+    <div id="tuBody"><div class="loading">Yuklanmoqda…</div></div>`;
+  document.getElementById("tuFilters").addEventListener("click", (e) => {
+    const chip = e.target.closest(".filter-chip");
+    if (!chip) return;
+    tuFilter = chip.dataset.status;
+    loadTopups();
+  });
+  loadTopups();
+}
+
+async function loadTopups() {
+  const body = document.getElementById("tuBody");
+  const d = await jget(`${API}/topups/?status=${encodeURIComponent(tuFilter)}`);
+  const tabs = [["all", "Hammasi", d.total], ...Object.keys(TU_STATUS).map((k) =>
+    [k, TU_STATUS[k].label, d.counts[k] || 0])];
+  document.getElementById("tuFilters").innerHTML = tabs.map(([k, label, n]) => `
+    <button class="filter-chip ${k === tuFilter ? "is-active" : ""}" data-status="${k}">
+      ${label} <span class="filter-chip__n">${fmt(n)}</span>
+    </button>`).join("");
+  setTopupBadge(d.counts.waiting || 0);
+
+  if (!d.rows.length) {
+    body.innerHTML = `<div class="loading">Bu holatda so'rov yo'q.</div>`;
+    return;
+  }
+  body.innerHTML = `
+    <div class="table-wrap"><div class="table-scroll"><table>
+      <thead><tr>
+        <th>Sana</th><th>Foydalanuvchi</th><th>Summa</th><th>Coin</th>
+        <th>Promo</th><th>Admin</th><th>Holati</th>
+      </tr></thead>
+      <tbody>
+        ${d.rows.map((t) => {
+          const st = TU_STATUS[t.status] || { label: t.status, c: "#555" };
+          return `<tr>
+            <td class="cell-muted">${dt(t.created_at)}</td>
+            <td>
+              <div class="cell-name">${esc(t.player.name)}</div>
+              <div class="cell-muted" style="font-size:12px">
+                ${t.player.username ? "@" + esc(t.player.username) + " · " : ""}TG ${t.player.telegram_id || "—"}
+              </div>
+            </td>
+            <td><b>${fmt(t.amount_sum)}</b> <span class="cell-muted">so'm</span></td>
+            <td class="coin">${fmt(t.coins)}</td>
+            <td>${t.promo ? `<span class="pct">${esc(t.promo)} +${t.bonus_percent}%</span>` : '<span class="cell-muted">—</span>'}</td>
+            <td class="cell-muted">${t.admin ? esc(t.admin) : "—"}</td>
+            <td><span class="status-badge" style="--bc:${st.c}">${st.label}</span></td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table></div></div>`;
+}
+
+// ---------- payment admins ----------
+async function renderPayAdmins() {
+  main.innerHTML = `
+    <div class="page-head"><div>
+      <div class="page-title">To'lov adminlar</div>
+      <div class="page-sub">Telegramda to'lovlarni qabul qiladigan odamlar</div>
+    </div></div>
+
+    <div class="give-box">
+      <div class="give-box__title">Admin qo'shish</div>
+      <div class="give-box__sub">
+        Telegram chat ID kerak — admin botga /start yozgach, uning chat ID sini
+        @userinfobot orqali bilib olishingiz mumkin.
+      </div>
+      <div class="give-row">
+        <input class="admin-input" id="paChat" placeholder="Telegram chat ID (masalan 123456789)" />
+        <input class="admin-input" id="paName" placeholder="Ism (masalan Jasur)" />
+      </div>
+      <div class="give-row" style="margin-top:10px">
+        <input class="admin-input" id="paCard" placeholder="Karta raqami (8600 ...)" />
+        <input class="admin-input" id="paHolder" placeholder="Karta egasi (JASUR RAHIMOV)" />
+        <button class="admin-btn" id="paAdd">Qo'shish</button>
+      </div>
+      <div class="give-msg" id="paMsg"></div>
+    </div>
+
+    <div id="paBody"><div class="loading">Yuklanmoqda…</div></div>`;
+
+  document.getElementById("paAdd").addEventListener("click", async () => {
+    const msg = document.getElementById("paMsg");
+    const res = await jpost(`${API}/payment-admins/`, {
+      tg_chat_id: document.getElementById("paChat").value.trim(),
+      name: document.getElementById("paName").value.trim(),
+      card_number: document.getElementById("paCard").value.trim(),
+      card_holder: document.getElementById("paHolder").value.trim(),
+    });
+    if (res.ok && res.data.ok) {
+      msg.className = "give-msg is-ok";
+      msg.textContent = "Qo'shildi!";
+      ["paChat", "paName", "paCard", "paHolder"].forEach((i) => (document.getElementById(i).value = ""));
+      loadPayAdmins();
+    } else {
+      msg.className = "give-msg is-err";
+      msg.textContent = res.data.error || "Xatolik";
+    }
+  });
+  loadPayAdmins();
+}
+
+async function loadPayAdmins() {
+  const body = document.getElementById("paBody");
+  const rows = await jget(`${API}/payment-admins/`);
+  if (!rows.length) {
+    body.innerHTML = `<div class="loading">Hali to'lov admini qo'shilmagan.
+      Admin bo'lmasa userlar balansni to'ldira olmaydi.</div>`;
+    return;
+  }
+  body.innerHTML = `
+    <div class="table-wrap"><div class="table-scroll"><table>
+      <thead><tr>
+        <th>Admin</th><th>Telegram chat ID</th><th>Karta</th>
+        <th>So'rovlar</th><th>Holati</th><th></th>
+      </tr></thead>
+      <tbody>
+        ${rows.map((a) => `
+          <tr>
+            <td class="cell-name">${esc(a.name)}</td>
+            <td class="cell-muted">${a.tg_chat_id}</td>
+            <td>
+              <div>${esc(a.card_number)}</div>
+              <div class="cell-muted" style="font-size:12px">${esc(a.card_holder)}</div>
+            </td>
+            <td>${fmt(a.topups)}</td>
+            <td><span class="status-badge" style="--bc:${a.is_active ? "var(--green)" : "var(--pink)"}">
+              ${a.is_active ? "Faol" : "O'chirilgan"}</span></td>
+            <td style="white-space:nowrap">
+              <button class="admin-btn admin-btn--ghost" data-toggle="${a.id}">
+                ${a.is_active ? "To'xtatish" : "Yoqish"}</button>
+              <button class="admin-btn admin-btn--danger" data-del="${a.id}">Olib tashlash</button>
+            </td>
+          </tr>`).join("")}
+      </tbody>
+    </table></div></div>`;
+
+  body.querySelectorAll("[data-toggle]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      await jpost(`${API}/payment-admins/${b.dataset.toggle}/`);
+      loadPayAdmins();
+    })
+  );
+  body.querySelectorAll("[data-del]").forEach((b) =>
+    b.addEventListener("click", () => openConfirm(
+      "Adminni olib tashlash",
+      "Bu adminni ro'yxatdan o'chirasizmi? Uning ochiq suhbatlari yopiladi.",
+      async () => { await jdel(`${API}/payment-admins/${b.dataset.del}/`); loadPayAdmins(); }
+    ))
+  );
+}
+
+// ---------- promo codes ----------
+async function renderPromos() {
+  main.innerHTML = `
+    <div class="page-head"><div>
+      <div class="page-title">Promokodlar</div>
+      <div class="page-sub">Balans to'ldirishda qo'shimcha bonus beradi</div>
+    </div></div>
+
+    <div class="give-box">
+      <div class="give-box__title">Promokod yaratish</div>
+      <div class="give-box__sub">Kod va bonus foizini o'zingiz belgilaysiz.</div>
+      <div class="give-row">
+        <input class="admin-input" id="prCode" placeholder="Kod (masalan DONK)" />
+        <input class="admin-input" id="prBonus" type="number" placeholder="Bonus % (masalan 20)" />
+        <button class="admin-btn" id="prAdd">Yaratish</button>
+      </div>
+      <div class="give-msg" id="prMsg"></div>
+    </div>
+
+    <div id="prBody"><div class="loading">Yuklanmoqda…</div></div>`;
+
+  document.getElementById("prAdd").addEventListener("click", async () => {
+    const msg = document.getElementById("prMsg");
+    const res = await jpost(`${API}/promos/`, {
+      code: document.getElementById("prCode").value.trim(),
+      bonus_percent: document.getElementById("prBonus").value.trim(),
+    });
+    if (res.ok && res.data.ok) {
+      msg.className = "give-msg is-ok";
+      msg.textContent = "Yaratildi!";
+      document.getElementById("prCode").value = "";
+      document.getElementById("prBonus").value = "";
+      loadPromos();
+    } else {
+      msg.className = "give-msg is-err";
+      msg.textContent = res.data.error || "Xatolik";
+    }
+  });
+  loadPromos();
+}
+
+async function loadPromos() {
+  const body = document.getElementById("prBody");
+  const rows = await jget(`${API}/promos/`);
+  if (!rows.length) {
+    body.innerHTML = `<div class="loading">Hali promokod yaratilmagan.</div>`;
+    return;
+  }
+  body.innerHTML = `
+    <div class="table-wrap"><div class="table-scroll"><table>
+      <thead><tr><th>Kod</th><th>Bonus</th><th>Ishlatilgan</th><th>Yaratilgan</th><th>Holati</th><th></th></tr></thead>
+      <tbody>
+        ${rows.map((p) => `
+          <tr>
+            <td class="cell-name">${esc(p.code)}</td>
+            <td class="pct">+${p.bonus_percent}%</td>
+            <td>${fmt(p.uses)}</td>
+            <td class="cell-muted">${dOnly(p.created_at)}</td>
+            <td><span class="status-badge" style="--bc:${p.is_active ? "var(--green)" : "var(--pink)"}">
+              ${p.is_active ? "Faol" : "O'chirilgan"}</span></td>
+            <td style="white-space:nowrap">
+              <button class="admin-btn admin-btn--ghost" data-toggle="${p.id}">
+                ${p.is_active ? "To'xtatish" : "Yoqish"}</button>
+              <button class="admin-btn admin-btn--danger" data-del="${p.id}">Olib tashlash</button>
+            </td>
+          </tr>`).join("")}
+      </tbody>
+    </table></div></div>`;
+
+  body.querySelectorAll("[data-toggle]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      await jpost(`${API}/promos/${b.dataset.toggle}/`);
+      loadPromos();
+    })
+  );
+  body.querySelectorAll("[data-del]").forEach((b) =>
+    b.addEventListener("click", () => openConfirm(
+      "Promokodni o'chirish",
+      "Bu promokod butunlay o'chiriladi.",
+      async () => { await jdel(`${API}/promos/${b.dataset.del}/`); loadPromos(); }
+    ))
+  );
+}
+
+// ---------- generic confirm ----------
+// An in-page dialog, not window.confirm(): a native dialog blocks the page and
+// there is no way back from it if something goes wrong mid-automation.
+const confirmModal = document.getElementById("confirmModal");
+const confirmOk = document.getElementById("confirmOk");
+let confirmAction = null;
+
+function openConfirm(title, sub, onOk) {
+  document.getElementById("confirmTitle").textContent = title;
+  document.getElementById("confirmSub").textContent = sub;
+  confirmAction = onOk;
+  confirmModal.hidden = false;
+}
+
+function closeConfirm() {
+  confirmModal.hidden = true;
+  confirmAction = null;
+}
+
+document.getElementById("confirmCancel").addEventListener("click", closeConfirm);
+confirmModal.addEventListener("click", (e) => {
+  if (e.target === confirmModal) closeConfirm();
+});
+confirmOk.addEventListener("click", async () => {
+  const fn = confirmAction;
+  confirmOk.disabled = true;
+  try { if (fn) await fn(); } finally { confirmOk.disabled = false; closeConfirm(); }
+});
+
 // ---------- reject modal ----------
 const rejectModal = document.getElementById("rejectModal");
 const rejectReason = document.getElementById("rejectReason");
@@ -304,7 +622,9 @@ rejectModal.addEventListener("click", (e) => {
   if (e.target === rejectModal) closeRejectModal();   // click the backdrop
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !rejectModal.hidden) closeRejectModal();
+  if (e.key !== "Escape") return;
+  if (!rejectModal.hidden) closeRejectModal();
+  if (!confirmModal.hidden) closeConfirm();
 });
 
 rejectConfirm.addEventListener("click", async () => {

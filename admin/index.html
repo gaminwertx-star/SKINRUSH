@@ -33,6 +33,11 @@
         <button class="nav-item" data-view="withdraws">
           Withdraw so'rovlari <span class="nav-badge" id="wdBadge" hidden></span>
         </button>
+        <button class="nav-item" data-view="topups">
+          To'lov so'rovlari <span class="nav-badge" id="tuBadge" hidden></span>
+        </button>
+        <button class="nav-item" data-view="payadmins">To'lov adminlar</button>
+        <button class="nav-item" data-view="promos">Promokodlar</button>
         <button class="nav-item" data-view="cases">Keyslar</button>
       </nav>
       <div class="sidebar__foot">
@@ -58,6 +63,18 @@
     </div>
   </div>
 
-  <script src="/admin/admin.js?v=5"></script>
+  <!-- GENERIC CONFIRM -->
+  <div class="modal" id="confirmModal" hidden>
+    <div class="modal__card">
+      <div class="modal__title" id="confirmTitle"></div>
+      <div class="modal__sub" id="confirmSub"></div>
+      <div class="modal__acts">
+        <button class="admin-btn admin-btn--ghost" id="confirmCancel">Bekor qilish</button>
+        <button class="admin-btn admin-btn--danger" id="confirmOk">Ha</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/admin/admin.js?v=6"></script>
 </body>
 </html>

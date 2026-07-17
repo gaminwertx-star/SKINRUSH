@@ -58,6 +58,11 @@ urlpatterns = [
     path("janglar/<int:pk>/bekor/", pages.battle_cancel, name="battle-cancel"),
 
     path("dokon/", pages.dokon, name="dokon"),
+
+    path("toldirish/", pages.toldirish, name="toldirish"),
+    path("toldirish/promo/", pages.toldirish_promo, name="toldirish-promo"),
+    path("toldirish/create/", pages.toldirish_create, name="toldirish-create"),
+    path("toldirish/bekor/", pages.toldirish_cancel, name="toldirish-cancel"),
     path("kontraktlar/", pages.kontraktlar, name="kontraktlar"),
     path("kontraktlar/create/", pages.kontrakt_play, name="kontrakt-play"),
     path("dostlar/", pages.dostlar, name="dostlar"),
