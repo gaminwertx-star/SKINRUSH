@@ -7,9 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=41" />
-  <link rel="stylesheet" href="/ssr.css?v=26" />
-  <link rel="stylesheet" href="/polish.css?v=7" />
+  <link rel="stylesheet" href="/styles.css?v=54" />
+  <link rel="stylesheet" href="/ssr.css?v=34" />
+  <link rel="stylesheet" href="/polish.css?v=11" />
 </head>
 <body>
 
@@ -40,25 +40,11 @@
   <!-- HEADER -->
   <header class="header">
     <div class="header__inner">
-      <details class="ss-drawer">
-        <summary class="hdr-icon hdr-burger" aria-label="menu">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
-        </summary>
-        <div class="ss-drawer__menu">
-          <a href="{% url 'home' %}" class="dnav {% if ACTIVE == 'bonuslar' %}is-active{% endif %}">{{ S.nav_bonuslar }}</a>
-          <a href="{% url 'home' %}#cases" class="dnav {% if ACTIVE == 'keyslar' %}is-active{% endif %}">{{ S.nav_keyslar }}</a>
-          <a href="{% url 'battles' %}" class="dnav {% if ACTIVE == 'janglar' %}is-active{% endif %}">{{ S.nav_janglar }}</a>
-          <a href="{% url 'kontraktlar' %}" class="dnav {% if ACTIVE == 'kontraktlar' %}is-active{% endif %}">{{ S.nav_kontraktlar }}</a>
-          <a href="{% url 'upgrade' %}" class="dnav {% if ACTIVE == 'yaxshilash' %}is-active{% endif %}">{{ S.nav_yaxshilash }}</a>
-          <a href="{% url 'dokon' %}" class="dnav {% if ACTIVE == 'dokon' %}is-active{% endif %}">{{ S.nav_dokon }}</a>
-          <a href="{% url 'inventory' %}" class="dnav {% if ACTIVE == 'inventar' %}is-active{% endif %}">{{ S.nav_inventar }}</a>
-          <a href="{% url 'dostlar' %}" class="dnav {% if ACTIVE == 'dostlar' %}is-active{% endif %}">{{ S.nav_dostlar }}</a>
-          <a href="{% url 'profile' %}" class="dnav {% if ACTIVE == 'profil' %}is-active{% endif %}">{{ S.prof_title }}</a>
-        </div>
-      </details>
-
       <div class="header__left">
-        <a href="{% url 'home' %}" class="logo"><img class="logo-img" src="/images/logo.png" alt="SKINRUSH" /></a>
+        <a href="{% url 'home' %}" class="logo">
+          <img class="logo-img logo-img--full" src="/images/logo.png?v=2" alt="SKIN RUSH" />
+          <img class="logo-img logo-img--word" src="/images/logo_word.png?v=1" alt="SKIN RUSH" />
+        </a>
         <div class="online">
           <span class="online__dot"></span>
           <span class="online__label">{{ S.online }}</span>
@@ -67,6 +53,13 @@
       </div>
 
       <div class="header__right">
+        <span class="bal-pill">
+          <b class="bal-pill__num">{{ ME.balance|fmt }}</b>
+          <img class="coin-img" src="/images/coin.png" alt="" />
+          <a class="bal-pill__add" href="{% url 'dokon' %}" aria-label="{{ S.prof_topup }}" title="{{ S.prof_topup }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </a>
+        </span>
         {% if ME.authenticated %}
           <div class="user-chip">
             <a class="user-chip__link" href="{% url 'profile' %}">
@@ -158,24 +151,63 @@
   <nav class="mbar">
     <a class="mbar__item {% if ACTIVE == 'bonuslar' %}is-active{% endif %}" href="{% url 'home' %}">
       <span class="mbar__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg></span>
-      <span class="mbar__lbl">{{ S.nav_bonuslar }}</span>
+      <span class="mbar__lbl">Home</span>
     </a>
     <a class="mbar__item {% if ACTIVE == 'keyslar' %}is-active{% endif %}" href="{% url 'home' %}#cases">
       <span class="mbar__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M3 12h18"/><path d="M8 8V6a4 4 0 0 1 8 0v2"/></svg></span>
       <span class="mbar__lbl">Case</span>
     </a>
-    <a class="mbar__center {% if ACTIVE == 'janglar' %}is-active{% endif %}" href="{% url 'battles' %}" aria-label="Battle">
-      <span class="mbar__center-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5 3 6V3h3l11.5 11.5"/><path d="m13 19 6-6"/><path d="m16 16 4 4"/></svg></span>
-      <span class="mbar__lbl">Battle</span>
+    <details class="mbar__center mbar__games">
+      <summary class="mbar__center-sum" aria-label="Game">
+        <span class="mbar__center-btn"><span class="mbar__center-ic"></span></span>
+        <span class="mbar__lbl">Game</span>
+      </summary>
+      <div class="mbar__games-pop">
+        <a class="mbar__game" href="{% url 'home' %}#cases">
+          <span class="mbar__game-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M3 12h18"/><path d="M8 8V6a4 4 0 0 1 8 0v2"/></svg></span>
+          <span class="mbar__game-nm">{{ S.nav_keyslar }}</span>
+        </a>
+        <a class="mbar__game" href="{% url 'battles' %}">
+          <span class="mbar__game-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5 3 6V3h3l11.5 11.5"/><path d="m13 19 6-6"/><path d="m16 16 4 4"/></svg></span>
+          <span class="mbar__game-nm">{{ S.nav_janglar }}</span>
+        </a>
+        <a class="mbar__game" href="{% url 'upgrade' %}">
+          <span class="mbar__game-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg></span>
+          <span class="mbar__game-nm">{{ S.nav_yaxshilash }}</span>
+        </a>
+        <a class="mbar__game" href="{% url 'kontraktlar' %}">
+          <span class="mbar__game-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/></svg></span>
+          <span class="mbar__game-nm">{{ S.nav_kontraktlar }}</span>
+        </a>
+      </div>
+    </details>
+    <a class="mbar__item {% if ACTIVE == 'dokon' %}is-active{% endif %}" href="{% url 'dokon' %}">
+      <span class="mbar__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg></span>
+      <span class="mbar__lbl">Shop</span>
     </a>
-    <a class="mbar__item {% if ACTIVE == 'inventar' %}is-active{% endif %}" href="{% url 'inventory' %}">
-      <span class="mbar__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></span>
-      <span class="mbar__lbl">{{ S.nav_inventar }}</span>
-    </a>
-    <a class="mbar__item {% if ACTIVE == 'profil' %}is-active{% endif %}" href="{% url 'profile' %}">
-      <span class="mbar__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>
-      <span class="mbar__lbl">Profil</span>
-    </a>
+    <details class="mbar__menu">
+      <summary class="mbar__item mbar__menu-sum" aria-label="Menu">
+        <span class="mbar__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg></span>
+        <span class="mbar__lbl">Menu</span>
+      </summary>
+      <div class="mbar__menu-pop">
+        <a class="hdr-menu__item {% if ACTIVE == 'bonuslar' %}is-active{% endif %}" href="{% url 'home' %}">
+          <span class="hdr-menu__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg></span>Home
+        </a>
+        <a class="hdr-menu__item {% if ACTIVE == 'profil' %}is-active{% endif %}" href="{% url 'profile' %}">
+          <span class="hdr-menu__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>Profile
+        </a>
+        <a class="hdr-menu__item {% if ACTIVE == 'inventar' %}is-active{% endif %}" href="{% url 'inventory' %}">
+          <span class="hdr-menu__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></span>Inventory
+        </a>
+        <a class="hdr-menu__item {% if ACTIVE == 'dostlar' %}is-active{% endif %}" href="{% url 'dostlar' %}">
+          <span class="hdr-menu__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Friends
+        </a>
+        <a class="hdr-menu__item {% if ACTIVE == 'promocode' %}is-active{% endif %}" href="{% url 'promocode' %}">
+          <span class="hdr-menu__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.1" fill="currentColor" stroke="none"/></svg></span>Promocode
+        </a>
+      </div>
+    </details>
   </nav>
 
   <!-- Telegram Mini App: auto-login from the Telegram profile when opened in-app -->
@@ -198,7 +230,8 @@
   })();
   </script>
 
-  <script src="/sounds.js?v=2" defer></script>
+  <script src="/sounds.js?v=3" defer></script>
+  <script src="/live.js?v=2" defer></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

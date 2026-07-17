@@ -1537,7 +1537,12 @@ body.btcm-open { overflow: hidden; }
   border-radius: 18px;
 }
 .wd-skin__art { height: 130px; display: grid; place-items: center; }
-.wd-skin__art img { max-width: 100%; max-height: 100%; object-fit: contain; }
+/* px, not %: a percentage max-height does not resolve against a grid area, so
+   the art would only be width-constrained and would overflow onto the name. */
+.wd-skin__art img {
+  max-height: 130px; max-width: 92%; object-fit: contain;
+  filter: drop-shadow(0 6px 12px rgba(0,0,0,.55));
+}
 .wd-skin__weapon { font-size: 12px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 .wd-skin__name { font-size: 16px; font-weight: 800; margin-top: 2px; }
 .wd-skin__price { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px; font-weight: 800; color: var(--gold); }
@@ -1579,4 +1584,7 @@ body.btcm-open { overflow: hidden; }
 @media (max-width: 720px) {
   .wd-layout { grid-template-columns: 1fr; }
   .wd-skin__art { height: 110px; }
+  .wd-skin__art img { max-height: 110px; }   /* keep in step with the art box */
+  /* clear the floating .sfx-toggle so it cannot sit on top of the submit button */
+  .wd-view { padding-bottom: 56px; }
 }
