@@ -1831,6 +1831,9 @@ a.ivd-fact:hover { background: rgba(255,255,255,.03); }
   .iv-sellall {
     position: fixed; left: 12px; right: 12px; z-index: 95; margin: 0;
     bottom: calc(96px + env(safe-area-inset-bottom));
+    /* the base rule sets width:100%, which would win over `right` and push the
+       button a full 12px off the right edge — let left/right size it instead */
+    width: auto;
   }
   /* fade the grid out behind the pinned button instead of letting cards
      collide with its edge */
