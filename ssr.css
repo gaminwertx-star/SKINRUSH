@@ -1820,16 +1820,30 @@ a.ivd-fact:hover { background: rgba(255,255,255,.03); }
 /* Pinned above the bottom nav, so selling never means scrolling to the end of a
    long inventory. Bound to the .mbar breakpoint (820px), not the card one: the
    bar is what it sits on top of. */
+/* Stacking above .mbar, from the bottom up:
+     .mbar            0  ..  64px   (its own height)
+     .mbar__center-btn  28 ..  86px   (raised 22px above the bar, 58px round)
+     .iv-sellall       96 .. 145px   (49px tall, clears the round button by 10)
+     .sfx-toggle      155 .. 199px   (44px round, lifted off the button)
+   The round Game button is the tight constraint: it sits proud of the bar, so
+   clearing the bar alone still leaves it sitting on top of this one. */
 @media (max-width: 820px) {
   .iv-sellall {
     position: fixed; left: 12px; right: 12px; z-index: 95; margin: 0;
-    bottom: calc(74px + env(safe-area-inset-bottom));   /* .mbar is 64px tall */
+    bottom: calc(96px + env(safe-area-inset-bottom));
   }
-  /* keep the last row of cards clear of the pinned button */
-  .iv { padding-bottom: 64px; }
-  /* .sfx-toggle parks at 74px too, and this button is full-width and paints
-     over it — lift it above rather than burying it. */
-  body:has(.iv-sellall) .sfx-toggle { bottom: calc(133px + env(safe-area-inset-bottom)); }
+  /* fade the grid out behind the pinned button instead of letting cards
+     collide with its edge */
+  .iv-sellall::before {
+    content: ""; position: absolute; z-index: -1; pointer-events: none;
+    left: -12px; right: -12px; top: -26px; bottom: calc(-96px - env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, transparent, var(--bg, #07080d) 62%);
+  }
+  /* let the last row scroll clear of the button */
+  .iv { padding-bottom: 96px; }
+  /* .sfx-toggle parks at 74px, under this full-width button (z 95 vs 60), which
+     would leave it unclickable — lift it above. */
+  body:has(.iv-sellall) .sfx-toggle { bottom: calc(155px + env(safe-area-inset-bottom)); }
 }
 
 @media (max-width: 720px) {
