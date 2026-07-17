@@ -5,9 +5,10 @@ messages. This module adds a tiny webhook endpoint that Telegram calls for every
 update. When a user sends ``/start`` we reply with a welcome message plus a big
 **web_app** inline button that opens the Mini App (auto-login happens there).
 
-Set the webhook once (see ``set_webhook`` helper / management step):
-    https://api.telegram.org/bot<TOKEN>/setWebhook?url=<SITE>/tg/webhook/<SECRET>/
-        &secret_token=<SECRET>
+Register the webhook with ``python manage.py set_webhook`` — not by hand. That
+command owns the ``allowed_updates`` list, and it has to match what `webhook`
+below handles: Telegram silently drops any update type missing from it, so a
+stale list makes the inline buttons do nothing at all with no error anywhere.
 
 Env vars used: ``TELEGRAM_BOT_TOKEN`` and ``TELEGRAM_WEBHOOK_SECRET``.
 """
