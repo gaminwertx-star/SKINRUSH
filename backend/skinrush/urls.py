@@ -67,6 +67,7 @@ urlpatterns = [
     path("kontraktlar/create/", pages.kontrakt_play, name="kontrakt-play"),
     path("dostlar/", pages.dostlar, name="dostlar"),
     path("promokod/", pages.promocode, name="promocode"),
+    path("promokod/faollashtirish/", pages.promocode_redeem, name="promocode-redeem"),
     path("profil/", pages.profile, name="profile"),
 
     # ---- auth ----

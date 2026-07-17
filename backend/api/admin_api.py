@@ -223,10 +223,13 @@ def admin_payment_admin_detail(request, pk):
     if a is None:
         return Response({"error": "Topilmadi"}, status=404)
     if request.method == "DELETE":
-        # A live conversation would be orphaned — close it first.
-        TopUpRequest.objects.filter(
-            admin=a, status__in=TopUpRequest.OPEN_STATUSES
-        ).update(status=TopUpRequest.CLOSED)
+        # A live conversation would be orphaned — close it first, handing back
+        # any promo the player never actually got the benefit of.
+        for req in TopUpRequest.objects.filter(
+                admin=a, status__in=TopUpRequest.OPEN_STATUSES):
+            req.release_promo()
+            req.status = TopUpRequest.CLOSED
+            req.save(update_fields=["status", "updated_at"])
         a.delete()
         return Response({"ok": True})
     a.is_active = not a.is_active
@@ -236,9 +239,15 @@ def admin_payment_admin_detail(request, pk):
 
 # ---------- promo codes ----------
 def _promo_row(p):
-    return {"id": p.id, "code": p.code, "bonus_percent": p.bonus_percent,
-            "is_active": p.is_active, "uses": p.uses,
-            "created_at": p.created_at.isoformat()}
+    return {
+        "id": p.id, "code": p.code, "kind": p.kind,
+        "bonus_percent": p.bonus_percent,
+        "case": {"id": p.case_id, "name": p.case.name} if p.case else None,
+        "reward": p.reward,
+        "max_uses": p.max_uses, "uses": p.uses, "is_spent": p.is_spent,
+        "is_active": p.is_active,
+        "created_at": p.created_at.isoformat(),
+    }
 
 
 @api_view(["GET", "POST"])
@@ -246,21 +255,42 @@ def _promo_row(p):
 @permission_classes([IsAdminUser])
 def admin_promos(request):
     if request.method == "GET":
-        return Response([_promo_row(p) for p in PromoCode.objects.all()])
+        return Response([_promo_row(p) for p in
+                         PromoCode.objects.select_related("case")])
 
     code = (request.data.get("code") or "").strip().upper()
     if not code:
         return Response({"error": "Promokodni yozing"}, status=400)
-    try:
-        bonus = int(request.data.get("bonus_percent"))
-    except (TypeError, ValueError):
-        return Response({"error": "Bonus foizini raqam bilan yozing"}, status=400)
-    if not 0 < bonus <= 500:
-        return Response({"error": "Bonus 1% dan 500% gacha bo'lsin"}, status=400)
     if PromoCode.objects.filter(code=code).exists():
         return Response({"error": "Bunday promokod bor"}, status=400)
 
-    p = PromoCode.objects.create(code=code, bonus_percent=bonus)
+    kind = request.data.get("kind") or PromoCode.KIND_BONUS
+    if kind not in dict(PromoCode.KINDS):
+        return Response({"error": "Promokod turini tanlang"}, status=400)
+
+    try:
+        max_uses = int(request.data.get("max_uses") or 0)
+    except (TypeError, ValueError):
+        return Response({"error": "Aktivatsiya sonini raqam bilan yozing"}, status=400)
+    if max_uses < 0:
+        return Response({"error": "Aktivatsiya soni manfiy bo'lmasin"}, status=400)
+
+    fields = {"code": code, "kind": kind, "max_uses": max_uses}
+    if kind == PromoCode.KIND_BONUS:
+        try:
+            bonus = int(request.data.get("bonus_percent"))
+        except (TypeError, ValueError):
+            return Response({"error": "Bonus foizini raqam bilan yozing"}, status=400)
+        if not 0 < bonus <= 500:
+            return Response({"error": "Bonus 1% dan 500% gacha bo'lsin"}, status=400)
+        fields["bonus_percent"] = bonus
+    else:
+        case = Case.objects.filter(pk=request.data.get("case_id")).first()
+        if case is None:
+            return Response({"error": "Keysni tanlang"}, status=400)
+        fields["case"] = case
+
+    p = PromoCode.objects.create(**fields)
     return Response({"ok": True, "row": _promo_row(p)})
 
 

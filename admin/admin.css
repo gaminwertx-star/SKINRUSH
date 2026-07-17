@@ -288,6 +288,21 @@ tbody tr.clickable:hover { background: var(--panel-2); }
 }
 
 
+/* segmented kind picker (promo form) */
+.seg {
+  display: inline-flex; gap: 4px; padding: 4px; margin-top: 12px;
+  background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 999px;
+}
+.seg__btn {
+  border: none; background: none; cursor: pointer; font-family: inherit;
+  padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 700;
+  color: var(--muted);
+}
+.seg__btn:hover { color: var(--text); }
+.seg__btn.is-active { background: var(--violet); color: #fff; }
+select.admin-input { cursor: pointer; }
+
+
 @media (max-width: 720px) {
   .wd-card { grid-template-columns: 1fr; gap: 12px; }
   .wd-card__side { align-items: stretch; }

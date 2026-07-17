@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}Promokod — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="pc">
+  <div class="cases-head">
+    <h2 class="section-title">Promokod</h2>
+  </div>
+
+  <div class="pc-panel">
+    <div class="pc-ico">🎁</div>
+    <div class="pc-title">Promokodingiz bormi?</div>
+    <p class="pc-sub">
+      Kodni kiriting va bepul keysni oching. To'ldirish bonusi kodlari
+      <a href="{% url 'toldirish' %}">balansni to'ldirish</a> sahifasida kiritiladi.
+    </p>
+
+    {% if player %}
+      <form class="pc-form" method="post" action="{% url 'promocode-redeem' %}">{% csrf_token %}
+        <input class="pc-input" type="text" name="code" placeholder="PROMOKOD"
+               autocomplete="off" spellcheck="false" required />
+        <button class="pc-btn" type="submit">Faollashtirish</button>
+      </form>
+    {% else %}
+      <a class="pc-btn pc-btn--link" href="{% url 'login' %}">Kirish</a>
+    {% endif %}
+  </div>
+
+  {% if free_cases %}
+    <div class="pc-sec">Sizdagi bepul keyslar</div>
+    <div class="pc-free">
+      {% for f in free_cases %}
+        <a class="pc-case" href="{% url 'case' f.case.slug %}">
+          <span class="pc-case__art"><img src="{{ f.case.image|img }}" alt="" loading="lazy" /></span>
+          <span class="pc-case__body">
+            <span class="pc-case__name">{{ f.case.name }}</span>
+            <span class="pc-case__tag">🎁 Bepul ochish</span>
+          </span>
+          <span class="pc-case__go">›</span>
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+
+{% endblock %}

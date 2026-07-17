@@ -13,12 +13,20 @@
     <div class="case-hero__panel">
       <h2 class="case-hero__title">{{ case.name }}</h2>
       <div class="case-hero__price"><span>{{ case.price|fmt }}</span> <img class="coin-img" src="/images/coin.png" alt="coin" /></div>
-      {% if ME.balance < case.price %}
-        <button class="case-hero__open" disabled title="{{ S.not_enough }}">{{ S.open_btn }}</button>
-        <div class="ss-nofunds">{{ S.not_enough }} · <a href="{% url 'dokon' %}">{{ S.nav_dokon }}</a></div>
+      {% if free_n %}
+        <div class="case-free">
+          🎁 Bepul ochish{% if free_n > 1 %} · {{ free_n }} ta{% endif %}
+        </div>
+      {% endif %}
+      {% if not free_n and ME.balance < case.price %}
+        <div class="ss-openrow">
+          <a class="case-hero__open" href="{% url 'toldirish' %}">{{ S.prof_topup }} <b>+{{ case.price|sub:ME.balance|fmt }}</b> <img class="coin-img" src="/images/coin.png" alt="" /></a>
+        </div>
       {% else %}
       <form method="post" action="{% url 'case-open' case.slug %}" class="ss-openrow">{% csrf_token %}
-        <button class="case-hero__open">{{ S.open_btn }}</button>
+        <button class="case-hero__open {% if free_n %}case-hero__open--free{% endif %}">
+          {% if free_n %}🎁 Bepul ochish{% else %}{{ S.open_btn }}{% endif %}
+        </button>
         <label class="ss-fastopt" title="{{ S.skip_btn }}">
           <input type="checkbox" name="fast" value="1" {% if request.session.skip_anim %}checked{% endif %} />
           <span class="ss-fastopt__dot" aria-hidden="true">

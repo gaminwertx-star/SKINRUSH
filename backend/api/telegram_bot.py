@@ -235,6 +235,7 @@ def _end(req):
     from .models import TopUpRequest
 
     if req.status != TopUpRequest.PAID:
+        req.release_promo()      # unpaid — the player keeps their code
         req.status = TopUpRequest.CLOSED
         req.save(update_fields=["status", "updated_at"])
     notify(req.player.telegram_id, "🔚 Aloqa uzildi admin bilan.")

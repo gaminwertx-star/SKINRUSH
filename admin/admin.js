@@ -482,19 +482,34 @@ async function loadPayAdmins() {
 }
 
 // ---------- promo codes ----------
+let prKind = "bonus";
+
 async function renderPromos() {
+  const cases = await jget(`${API}/cases/`);
   main.innerHTML = `
     <div class="page-head"><div>
       <div class="page-title">Promokodlar</div>
-      <div class="page-sub">Balans to'ldirishda qo'shimcha bonus beradi</div>
+      <div class="page-sub">To'ldirish bonusi yoki bepul keys beradi</div>
     </div></div>
 
     <div class="give-box">
       <div class="give-box__title">Promokod yaratish</div>
-      <div class="give-box__sub">Kod va bonus foizini o'zingiz belgilaysiz.</div>
-      <div class="give-row">
+      <div class="give-box__sub">Kod, turi va nechta odam ishlata olishini o'zingiz belgilaysiz.</div>
+
+      <div class="seg" id="prKindSeg">
+        <button class="seg__btn is-active" data-kind="bonus">To'ldirish bonusi</button>
+        <button class="seg__btn" data-kind="case">Bepul keys</button>
+      </div>
+
+      <div class="give-row" style="margin-top:12px">
         <input class="admin-input" id="prCode" placeholder="Kod (masalan DONK)" />
         <input class="admin-input" id="prBonus" type="number" placeholder="Bonus % (masalan 20)" />
+        <select class="admin-input" id="prCase" hidden>
+          <option value="">Keysni tanlang…</option>
+          ${cases.map((c) => `<option value="${c.id}">${esc(c.name)} · ${fmt(c.price)} coin</option>`).join("")}
+        </select>
+        <input class="admin-input" id="prMax" type="number" min="0"
+               placeholder="Aktivatsiya (0 = cheksiz)" />
         <button class="admin-btn" id="prAdd">Yaratish</button>
       </div>
       <div class="give-msg" id="prMsg"></div>
@@ -502,17 +517,34 @@ async function renderPromos() {
 
     <div id="prBody"><div class="loading">Yuklanmoqda…</div></div>`;
 
+  const bonusIn = document.getElementById("prBonus");
+  const caseIn = document.getElementById("prCase");
+  document.getElementById("prKindSeg").addEventListener("click", (e) => {
+    const b = e.target.closest(".seg__btn");
+    if (!b) return;
+    prKind = b.dataset.kind;
+    document.querySelectorAll("#prKindSeg .seg__btn").forEach((x) =>
+      x.classList.toggle("is-active", x.dataset.kind === prKind));
+    bonusIn.hidden = prKind !== "bonus";
+    caseIn.hidden = prKind !== "case";
+  });
+
   document.getElementById("prAdd").addEventListener("click", async () => {
     const msg = document.getElementById("prMsg");
     const res = await jpost(`${API}/promos/`, {
       code: document.getElementById("prCode").value.trim(),
-      bonus_percent: document.getElementById("prBonus").value.trim(),
+      kind: prKind,
+      bonus_percent: bonusIn.value.trim(),
+      case_id: caseIn.value,
+      max_uses: document.getElementById("prMax").value.trim() || 0,
     });
     if (res.ok && res.data.ok) {
       msg.className = "give-msg is-ok";
       msg.textContent = "Yaratildi!";
       document.getElementById("prCode").value = "";
-      document.getElementById("prBonus").value = "";
+      bonusIn.value = "";
+      caseIn.value = "";
+      document.getElementById("prMax").value = "";
       loadPromos();
     } else {
       msg.className = "give-msg is-err";
@@ -531,22 +563,36 @@ async function loadPromos() {
   }
   body.innerHTML = `
     <div class="table-wrap"><div class="table-scroll"><table>
-      <thead><tr><th>Kod</th><th>Bonus</th><th>Ishlatilgan</th><th>Yaratilgan</th><th>Holati</th><th></th></tr></thead>
+      <thead><tr>
+        <th>Kod</th><th>Turi</th><th>Beradi</th><th>Aktivatsiya</th>
+        <th>Yaratilgan</th><th>Holati</th><th></th>
+      </tr></thead>
       <tbody>
-        ${rows.map((p) => `
-          <tr>
+        ${rows.map((p) => {
+          const isCase = p.kind === "case";
+          // "spent" is not the same as "switched off" — say which.
+          const st = !p.is_active
+            ? { label: "O'chirilgan", c: "var(--pink)" }
+            : p.is_spent
+              ? { label: "Limit tugagan", c: "var(--gold)" }
+              : { label: "Faol", c: "var(--green)" };
+          return `<tr>
             <td class="cell-name">${esc(p.code)}</td>
-            <td class="pct">+${p.bonus_percent}%</td>
-            <td>${fmt(p.uses)}</td>
+            <td><span class="status-badge" style="--bc:${isCase ? "var(--violet)" : "var(--teal)"}">
+              ${isCase ? "Bepul keys" : "Bonus"}</span></td>
+            <td>${isCase
+                  ? `<span class="cell-name">${esc(p.case ? p.case.name : "— o'chirilgan keys")}</span>`
+                  : `<span class="pct">+${p.bonus_percent}%</span>`}</td>
+            <td>${fmt(p.uses)}${p.max_uses ? " / " + fmt(p.max_uses) : ' <span class="cell-muted">/ ∞</span>'}</td>
             <td class="cell-muted">${dOnly(p.created_at)}</td>
-            <td><span class="status-badge" style="--bc:${p.is_active ? "var(--green)" : "var(--pink)"}">
-              ${p.is_active ? "Faol" : "O'chirilgan"}</span></td>
+            <td><span class="status-badge" style="--bc:${st.c}">${st.label}</span></td>
             <td style="white-space:nowrap">
               <button class="admin-btn admin-btn--ghost" data-toggle="${p.id}">
                 ${p.is_active ? "To'xtatish" : "Yoqish"}</button>
               <button class="admin-btn admin-btn--danger" data-del="${p.id}">Olib tashlash</button>
             </td>
-          </tr>`).join("")}
+          </tr>`;
+        }).join("")}
       </tbody>
     </table></div></div>`;
 

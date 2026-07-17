@@ -12,7 +12,7 @@ from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.models import User
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import F, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -27,8 +27,8 @@ from .auth_telegram import current_player, verify_webapp
 from .templatetags.skinrush_extras import img as _img_url
 from .models import (
     TOPUP_MIN_SUM, TOPUP_PACK_COINS, TOPUP_PACK_SUM,
-    Battle, Case, CaseItem, Drop, OpenRecord, PaymentAdmin, Player, PromoCode,
-    TopUpRequest, WithdrawRequest, coins_for_sum,
+    Battle, Case, CaseItem, Drop, FreeCase, OpenRecord, PaymentAdmin, Player,
+    PromoCode, PromoRedemption, TopUpRequest, WithdrawRequest, coins_for_sum,
 )
 from .telegram_bot import notify_topup_request, notify_withdraw
 from .views import (
@@ -163,8 +163,14 @@ def case_detail(request, slug):
     case = get_object_or_404(Case, slug=slug)
     items = sorted(case.items.all(), key=lambda it: (it.chance, -it.price))
     contents = [item_payload(it) for it in items]
+    player = current_player(request)
+    # A free opening beats the balance check entirely — it costs nothing, so a
+    # broke player must still see the open button, not a top-up prompt.
+    free_n = (player.free_cases.filter(case=case, used=False).count()
+              if player else 0)
     return render(request, "case.html", {
         "ACTIVE": "keyslar", "case": case, "contents": contents,
+        "free_n": free_n,
     })
 
 
@@ -260,10 +266,22 @@ def case_open(request, slug):
         return redirect("case", slug=slug)
 
     player = current_player(request)
-    ok, _ = _charge(request, player, case.price)
-    if not ok:
-        messages.error(request, i18n.t(i18n.get_lang(request), "not_enough"))
-        return redirect("case", slug=slug)
+    # A promo-granted free opening is spent instead of the balance. Claim it
+    # under a row lock: two taps must not both find the same grant unused.
+    free = None
+    if player:
+        with transaction.atomic():
+            free = (player.free_cases.select_for_update()
+                    .filter(case=case, used=False).first())
+            if free:
+                free.used = True
+                free.used_at = timezone.now()
+                free.save(update_fields=["used", "used_at"])
+    if not free:
+        ok, _ = _charge(request, player, case.price)
+        if not ok:
+            messages.error(request, i18n.t(i18n.get_lang(request), "not_enough"))
+            return redirect("case", slug=slug)
 
     # An unclaimed previous drop must not be lost when the session
     # pending_win is overwritten below — bank it into the inventory.
@@ -522,13 +540,102 @@ def sell_all(request):
     return redirect("inventory")
 
 
-# ---------------------------------------------------------------- top-up
-def _promo_for(code):
+# ---------------------------------------------------------------- promo codes
+def _promo_for(code, kind=None):
     """The live promo matching `code`, or None. Codes are case-insensitive."""
     code = (code or "").strip().upper()
     if not code:
         return None
-    return PromoCode.objects.filter(code=code, is_active=True).first()
+    qs = PromoCode.objects.filter(code=code, is_active=True)
+    if kind:
+        qs = qs.filter(kind=kind)
+    return qs.select_related("case").first()
+
+
+def _promo_error(promo, player):
+    """Why `player` may not use `promo` right now — or None if they may.
+
+    One place, because the top-up form and the redeem page have to agree; a code
+    that looks good on one and is refused by the other is worse than no code.
+    """
+    if promo is None:
+        return "Bunday promokod yo'q"
+    if promo.is_spent:
+        return "Bu promokod limiti tugagan"
+    if player and PromoRedemption.objects.filter(promo=promo, player=player).exists():
+        return "Siz bu promokodni allaqachon ishlatgansiz"
+    return None
+
+
+def _redeem(promo, player):
+    """Book `player`'s use of `promo`. Returns an error string, or None.
+
+    The unique constraint is the real guard: two taps racing each other both
+    pass the checks above, and only one survives the insert.
+    """
+    with transaction.atomic():
+        fresh = PromoCode.objects.select_for_update().get(pk=promo.pk)
+        err = _promo_error(fresh, player)
+        if err:
+            return err
+        try:
+            PromoRedemption.objects.create(promo=fresh, player=player)
+        except IntegrityError:
+            return "Siz bu promokodni allaqachon ishlatgansiz"
+        PromoCode.objects.filter(pk=fresh.pk).update(uses=F("uses") + 1)
+        if fresh.kind == PromoCode.KIND_CASE and fresh.case_id:
+            FreeCase.objects.create(player=player, case=fresh.case, promo=fresh)
+    return None
+
+
+def promocode(request):
+    """Redeem a code. Bonus codes belong on the top-up page, so this page is
+    where the free-case ones land."""
+    player = current_player(request)
+    granted = [f for f in (player.free_cases.filter(used=False)
+                           .select_related("case") if player else [])]
+    return render(request, "promocode.html", {
+        "ACTIVE": "promocode",
+        "player": player,
+        "free_cases": granted,
+    })
+
+
+@require_POST
+def promocode_redeem(request):
+    player = current_player(request)
+    if not player:
+        messages.error(request, "Promokod ishlatish uchun hisobingizga kiring")
+        return redirect("login")
+
+    code = (request.POST.get("code") or "").strip().upper()
+    promo = _promo_for(code)
+    err = _promo_error(promo, player)
+    if err:
+        messages.error(request, err)
+        return redirect("promocode")
+
+    if promo.kind == PromoCode.KIND_BONUS:
+        messages.info(
+            request,
+            f"«{promo.code}» — bu to'ldirish bonusi (+{promo.bonus_percent}%). "
+            f"Uni balansni to'ldirishda kiriting.")
+        return redirect("toldirish")
+
+    if not promo.case_id:
+        messages.error(request, "Bu promokodning keysi o'chirilgan")
+        return redirect("promocode")
+
+    err = _redeem(promo, player)
+    if err:
+        messages.error(request, err)
+        return redirect("promocode")
+
+    messages.success(request, f"🎁 Bepul keys yutdingiz: {promo.case.name}!")
+    return redirect("case", slug=promo.case.slug)
+
+
+# ---------------------------------------------------------------- top-up
 
 
 def toldirish(request):
@@ -541,7 +648,9 @@ def toldirish(request):
 
     admins = list(PaymentAdmin.objects.filter(is_active=True))
     code = (request.GET.get("promo") or "").strip().upper()
-    promo = _promo_for(code)
+    promo = _promo_for(code, kind=PromoCode.KIND_BONUS)
+    if promo and _promo_error(promo, player):
+        promo = None
     return render(request, "toldirish.html", {
         "ACTIVE": "dokon",
         "pack_sum": TOPUP_PACK_SUM, "pack_coins": TOPUP_PACK_COINS,
@@ -564,10 +673,24 @@ def _active_topup(player):
 
 
 def toldirish_promo(request):
-    """Live promo lookup for the amount box (the form re-checks on submit)."""
-    promo = _promo_for(request.GET.get("code"))
-    if not promo:
+    """Live promo lookup for the amount box (the form re-checks on submit).
+
+    Only bonus codes work here; a free-case code entered by mistake gets told
+    where it does belong rather than a flat "no such code".
+    """
+    code = (request.GET.get("code") or "").strip().upper()
+    promo = _promo_for(code, kind=PromoCode.KIND_BONUS)
+    if promo is None:
+        other = _promo_for(code, kind=PromoCode.KIND_CASE)
+        if other:
+            return JsonResponse({"ok": False,
+                                 "error": "Bu bepul keys kodi — «Promokod» "
+                                          "sahifasida faollashtiring"})
         return JsonResponse({"ok": False})
+
+    err = _promo_error(promo, current_player(request))
+    if err:
+        return JsonResponse({"ok": False, "error": err})
     return JsonResponse({"ok": True, "code": promo.code,
                          "bonus_percent": promo.bonus_percent})
 
@@ -596,8 +719,13 @@ def toldirish_create(request):
                                 "keyinroq urinib ko'ring")
         return redirect("toldirish")
 
-    # Re-check the promo server-side; the page only ever displayed it.
-    promo = _promo_for(request.POST.get("promo"))
+    # Re-check the promo server-side; the page only ever displayed it. An
+    # unusable code is dropped rather than blocking the top-up — the player
+    # still wants their coins.
+    promo = _promo_for(request.POST.get("promo"), kind=PromoCode.KIND_BONUS)
+    if promo and _promo_error(promo, player):
+        messages.error(request, _promo_error(promo, player))
+        return redirect("toldirish")
     bonus = promo.bonus_percent if promo else 0
     coins = coins_for_sum(amount, bonus)
 
@@ -605,11 +733,14 @@ def toldirish_create(request):
         if player.topups.filter(status__in=TopUpRequest.OPEN_STATUSES).exists():
             messages.error(request, "Sizda hozircha faol so'rov bor, iltimos kuting")
             return redirect("toldirish")
+        if promo:
+            err = _redeem(promo, player)
+            if err:
+                messages.error(request, err)
+                return redirect("toldirish")
         req = TopUpRequest.objects.create(
             player=player, admin=admin, amount_sum=amount, coins=coins,
             promo=promo, bonus_percent=bonus)
-        if promo:
-            PromoCode.objects.filter(pk=promo.pk).update(uses=F("uses") + 1)
 
     notify_topup_request(admin.tg_chat_id, req.id, player.display_name,
                          player.username, amount, coins, bonus)
@@ -624,8 +755,10 @@ def toldirish_cancel(request):
     player = current_player(request)
     if not player:
         return redirect("login")
-    player.topups.filter(status=TopUpRequest.WAITING).update(
-        status=TopUpRequest.CLOSED)
+    for req in player.topups.filter(status=TopUpRequest.WAITING):
+        req.release_promo()          # they never got the bonus — give the code back
+        req.status = TopUpRequest.CLOSED
+        req.save(update_fields=["status", "updated_at"])
     messages.success(request, "So'rov bekor qilindi")
     return redirect("toldirish")
 
@@ -1133,8 +1266,6 @@ def dostlar(request):
     return render(request, "simple.html", {"ACTIVE": "dostlar"})
 
 
-def promocode(request):
-    return render(request, "simple.html", {"ACTIVE": "promocode"})
 
 
 # ---------------------------------------------------------------- profile

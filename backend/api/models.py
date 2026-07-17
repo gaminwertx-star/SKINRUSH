@@ -286,13 +286,28 @@ class PaymentAdmin(models.Model):
 
 
 class PromoCode(models.Model):
-    """A top-up bonus code. The admin picks both the code and the percentage —
-    nothing here is hard-coded to a particular code or a particular bonus."""
+    """A code an admin hands out. Two kinds, both fully admin-defined:
+
+    `bonus` — extra coins on a top-up, by whatever percentage they type
+    `case`  — one free opening of a case they choose
+
+    `max_uses` is the activation limit: how many players may redeem it at all
+    (0 = no limit). Redemption is one per player either way — see
+    PromoRedemption — so "10 activations" means ten different people, not one
+    person ten times.
+    """
+
+    KIND_BONUS, KIND_CASE = "bonus", "case"
+    KINDS = [(KIND_BONUS, "To'ldirish bonusi"), (KIND_CASE, "Bepul keys")]
 
     code = models.CharField(max_length=32, unique=True, db_index=True)  # stored upper-case
-    bonus_percent = models.IntegerField(default=0)
-    is_active = models.BooleanField(default=True)
+    kind = models.CharField(max_length=8, choices=KINDS, default=KIND_BONUS)
+    bonus_percent = models.IntegerField(default=0)          # kind=bonus
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, null=True,
+                             blank=True, related_name="promos")  # kind=case
+    max_uses = models.IntegerField(default=0)               # 0 = unlimited
     uses = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -302,8 +317,63 @@ class PromoCode(models.Model):
         self.code = (self.code or "").strip().upper()
         super().save(*args, **kwargs)
 
+    @property
+    def is_spent(self):
+        return bool(self.max_uses) and self.uses >= self.max_uses
+
+    @property
+    def reward(self):
+        if self.kind == self.KIND_CASE:
+            return self.case.name if self.case else "—"
+        return f"+{self.bonus_percent}%"
+
     def __str__(self):
-        return f"{self.code} (+{self.bonus_percent}%)"
+        return f"{self.code} ({self.reward})"
+
+
+class PromoRedemption(models.Model):
+    """Who has already used which code. The unique pair is the rule itself: one
+    player can never redeem the same code twice, whatever the kind."""
+
+    promo = models.ForeignKey(PromoCode, on_delete=models.CASCADE,
+                              related_name="redemptions")
+    player = models.ForeignKey(Player, on_delete=models.CASCADE,
+                               related_name="promo_redemptions")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["promo", "player"],
+                                    name="uniq_promo_per_player"),
+        ]
+
+    def __str__(self):
+        return f"{self.promo.code} · {self.player}"
+
+
+class FreeCase(models.Model):
+    """One free opening of a case, granted by a `case` promo.
+
+    Spent by `pages.case_open`, which skips the charge when a player has one for
+    the case they are opening.
+    """
+
+    player = models.ForeignKey(Player, on_delete=models.CASCADE,
+                               related_name="free_cases")
+    case = models.ForeignKey(Case, on_delete=models.CASCADE,
+                             related_name="free_grants")
+    promo = models.ForeignKey(PromoCode, on_delete=models.SET_NULL, null=True,
+                              blank=True, related_name="free_cases")
+    used = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.case} · {self.player}" + (" (used)" if self.used else "")
 
 
 class TopUpRequest(models.Model):
@@ -339,6 +409,21 @@ class TopUpRequest(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+    def release_promo(self):
+        """Hand the promo back when a request dies without payment.
+
+        The code is spent at request time so a player cannot file ten requests
+        on one code — but if the request is cancelled or the admin hangs up, the
+        player never got their bonus, and burning their code would be theft.
+        """
+        if self.status == self.PAID or not self.promo_id:
+            return
+        deleted, _ = PromoRedemption.objects.filter(
+            promo_id=self.promo_id, player_id=self.player_id).delete()
+        if deleted:
+            PromoCode.objects.filter(pk=self.promo_id, uses__gt=0).update(
+                uses=models.F("uses") - 1)
 
     def __str__(self):
         return f"{self.player} · {self.amount_sum} so'm ({self.status})"
