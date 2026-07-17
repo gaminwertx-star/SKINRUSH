@@ -3,8 +3,12 @@
 All endpoints are session-authenticated and restricted to staff users.
 The admin front-end (admin/index.html) is a thin client that calls these.
 """
+from datetime import timedelta
+
 from django.contrib.auth import authenticate, login, logout
+from django.db import transaction
 from django.db.models import Count, Sum
+from django.utils import timezone
 from rest_framework.decorators import (
     api_view,
     authentication_classes,
@@ -14,7 +18,10 @@ from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 
 from .authentication import CsrfExemptSession
-from .models import Case, CaseItem, CoinPurchase, Drop, OpenRecord, Player
+from .models import (
+    Case, CaseItem, CoinPurchase, Drop, OpenRecord, Player, WithdrawRequest,
+)
+from .telegram_bot import notify_withdraw
 
 
 def _case_row(c):
@@ -68,6 +75,7 @@ def admin_logout(request):
 @authentication_classes([CsrfExemptSession])
 @permission_classes([IsAdminUser])
 def admin_stats(request):
+    day_ago = timezone.now() - timedelta(hours=24)
     return Response({
         "cases": Case.objects.count(),
         "skins": CaseItem.objects.values("name").distinct().count(),
@@ -75,7 +83,122 @@ def admin_stats(request):
         "drops": Drop.objects.count(),
         "players": Player.objects.count(),
         "opens": OpenRecord.objects.count(),
+        # Withdraws waiting on an admin — the queue that needs working today.
+        "withdraws_pending": WithdrawRequest.objects.filter(
+            status=WithdrawRequest.PENDING).count(),
+        "withdraws_pending_24h": WithdrawRequest.objects.filter(
+            status=WithdrawRequest.PENDING, created_at__gte=day_ago).count(),
     })
+
+
+# ---------- withdraw requests ----------
+def _withdraw_row(w):
+    p, r = w.player, w.record
+    return {
+        "id": w.id,
+        "player": {
+            "id": p.id, "name": p.display_name, "username": p.username,
+            "telegram_id": p.telegram_id, "photo_url": p.photo_url,
+        },
+        "skin": {
+            "name": r.skin_name, "image": r.skin_image, "price": r.skin_price,
+            "rarity": r.rarity, "color": r.color, "wear": r.wear,
+        },
+        "case_name": w.case_name,
+        "trade_url": w.trade_url,
+        "status": w.status,
+        "reject_reason": w.reject_reason,
+        "created_at": w.created_at.isoformat(),
+        "updated_at": w.updated_at.isoformat(),
+    }
+
+
+@api_view(["GET"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_withdraws(request):
+    """List withdraw requests, newest first, optionally filtered by status.
+    `counts` feeds the filter tabs so they show a badge even while filtered."""
+    status = (request.query_params.get("status") or "").strip()
+    qs = WithdrawRequest.objects.select_related("player", "record")
+    if status and status != "all":
+        qs = qs.filter(status=status)
+    counts = dict(WithdrawRequest.objects.values_list("status")
+                  .annotate(n=Count("id")).values_list("status", "n"))
+    return Response({
+        "rows": [_withdraw_row(w) for w in qs[:300]],
+        "counts": counts,
+        "total": WithdrawRequest.objects.count(),
+    })
+
+
+def _advance(pk, allowed_from, new_status, reason=""):
+    """Move a request `allowed_from` -> `new_status`, settle the skin, notify.
+
+    The `allowed_from` guard is what keeps the flow one-way: a double-clicked
+    button or a stale page cannot re-fire a step or skip one.
+    """
+    with transaction.atomic():
+        w = (WithdrawRequest.objects.select_for_update()
+             .select_related("player", "record").filter(pk=pk).first())
+        if w is None:
+            return Response({"error": "Topilmadi"}, status=404)
+        if w.status != allowed_from:
+            label = dict(WithdrawRequest.STATUSES).get(w.status, w.status)
+            return Response(
+                {"error": f"So'rov allaqachon «{label}» holatida — amalni "
+                          f"qo'llab bo'lmaydi. Sahifani yangilang."},
+                status=409)
+
+        w.status = new_status
+        w.reject_reason = reason
+        w.save(update_fields=["status", "reject_reason", "updated_at"])
+
+        if new_status == WithdrawRequest.REJECTED:
+            # Hand the skin back — the player can withdraw it again.
+            OpenRecord.objects.filter(pk=w.record_id).update(is_locked=False)
+        elif new_status == WithdrawRequest.COMPLETED:
+            # It lives in real Steam now, so it leaves the virtual inventory for
+            # good. is_locked stays on so it can never be re-withdrawn.
+            OpenRecord.objects.filter(pk=w.record_id).update(sold=True)
+
+    # Outside the transaction: a slow or failing Telegram call must not roll
+    # back a status the admin already committed.
+    notify_withdraw(w.player.telegram_id, new_status, w.record.skin_name, reason)
+    return Response({"ok": True, "row": _withdraw_row(w)})
+
+
+@api_view(["POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_withdraw_approve(request, pk):
+    return _advance(pk, WithdrawRequest.PENDING, WithdrawRequest.APPROVED)
+
+
+@api_view(["POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_withdraw_reject(request, pk):
+    reason = (request.data.get("reason") or "").strip()
+    if not reason:
+        return Response({"error": "Rad etish sababini yozing"}, status=400)
+    return _advance(pk, WithdrawRequest.PENDING, WithdrawRequest.REJECTED, reason)
+
+
+@api_view(["POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_withdraw_mark_sent(request, pk):
+    """Admin has sent the trade offer by hand in Steam."""
+    return _advance(pk, WithdrawRequest.APPROVED, WithdrawRequest.SENT)
+
+
+@api_view(["POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_withdraw_complete(request, pk):
+    """Player accepted the offer — the skin is really theirs now."""
+    return _advance(pk, WithdrawRequest.SENT, WithdrawRequest.COMPLETED)
 
 
 # ---------- users / players ----------

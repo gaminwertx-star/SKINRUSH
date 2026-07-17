@@ -6,6 +6,7 @@ runs here on the server and the result is baked into the HTML before it is
 sent; CSS handles the reveal animations. Forms POST back to these views.
 """
 import random
+import re
 from datetime import timedelta
 
 from django.contrib import messages
@@ -24,7 +25,10 @@ from . import game, i18n
 from .auth_account import EMAIL_RE, USERNAME_RE, _norm_phone
 from .auth_telegram import current_player, verify_webapp
 from .templatetags.skinrush_extras import img as _img_url
-from .models import Battle, Case, CaseItem, Drop, OpenRecord, Player
+from .models import (
+    Battle, Case, CaseItem, Drop, OpenRecord, Player, WithdrawRequest,
+)
+from .telegram_bot import notify_withdraw
 from .views import (
     DAILY_DAYS, DAILY_TASKS, UPGRADE_EDGE,
     _battle_card, _card_cases, _clamp, _credit, _daily_days, _int,
@@ -311,7 +315,8 @@ def sell(request):
     rec_id = _int(request.POST.get("record_id"))
 
     if rec_id and player:
-        rec = player.opens.filter(pk=rec_id, sold=False).first()
+        # is_locked → promised to a withdraw request, not the player's to sell.
+        rec = player.opens.filter(pk=rec_id, sold=False, is_locked=False).first()
         if rec:
             rec.sold = True
             rec.save(update_fields=["sold"])
@@ -341,19 +346,23 @@ def sell(request):
 
 
 # ---------------------------------------------------------------- inventory
-def _inv_row(rid, name, image, price, rarity, color, wear, case_name):
+def _inv_row(rid, name, image, price, rarity, color, wear, case_name, locked=False):
     parts = name.split(" | ")
     return {"id": rid, "name": name, "weapon": parts[0],
             "finish": parts[1] if len(parts) > 1 else name,
             "img": image, "price": price, "tier_label": rarity,
-            "color": color or "#b0c3d9", "wear": wear, "case_name": case_name}
+            "color": color or "#b0c3d9", "wear": wear, "case_name": case_name,
+            "locked": locked}
 
 
 def _inv_rows(request):
+    """Inventory as shown on the page. Unlike `_owned_rows` this keeps skins held
+    by an open withdraw request — the player should see where their skin went,
+    the template just swaps the actions for a "being withdrawn" badge."""
     player = current_player(request)
     if player:
         return [_inv_row(r.id, r.skin_name, r.skin_image, r.skin_price,
-                         r.rarity, r.color, r.wear, r.case_name)
+                         r.rarity, r.color, r.wear, r.case_name, r.is_locked)
                 for r in player.opens.filter(sold=False).order_by("-created_at")]
     return [_inv_row(r["id"], r["name"], r["image"], r["price"],
                      r["rarity"], r["color"], r["wear"], r["case_name"])
@@ -365,7 +374,110 @@ def inventory(request):
     return render(request, "inventory.html", {
         "ACTIVE": "inventar", "items": rows,
         "total": sum(r["price"] for r in rows),
+        # Guests have no withdraw flow at all — the button needs an account.
+        "can_withdraw": current_player(request) is not None,
     })
+
+
+# ---------------------------------------------------------------- withdraw
+# Steam's own trade-offer URL shape. Anything else cannot receive an offer, so
+# it is rejected at the form rather than wasting an admin's time.
+TRADE_URL_RE = re.compile(
+    r"^https://steamcommunity\.com/tradeoffer/new/\?partner=\d+&token=\w+$")
+
+
+def _withdrawable(player, rec_id):
+    """The player's skin `rec_id`, if it is theirs to withdraw. None otherwise."""
+    return player.opens.filter(pk=rec_id, sold=False, is_locked=False).first()
+
+
+def _active_withdraw(player):
+    """The player's in-flight request, if any — one at a time (see OPEN_STATUSES)."""
+    return player.withdraws.filter(
+        status__in=WithdrawRequest.OPEN_STATUSES).select_related("record").first()
+
+
+def withdraw(request):
+    """Withdraw a skin to Steam. Shows the skin card, asks for the trade URL the
+    first time round, then hands over to `withdraw_create` to file the request."""
+    player = current_player(request)
+    if not player:
+        messages.error(request, "Skin yechib olish uchun hisobingizga kiring")
+        return redirect("login")
+
+    rec = _withdrawable(player, _int(request.GET.get("id")))
+    if not rec:
+        messages.error(request, "Skin topilmadi yoki allaqachon band qilingan")
+        return redirect("inventory")
+
+    return render(request, "withdraw.html", {
+        "ACTIVE": "inventar",
+        "skin": _inv_row(rec.id, rec.skin_name, rec.skin_image, rec.skin_price,
+                         rec.rarity, rec.color, rec.wear, rec.case_name),
+        "trade_url": player.trade_url,
+        "active": _active_withdraw(player),
+        # No URL saved yet, or the player asked to change the one on file.
+        "editing": not player.trade_url or bool(request.GET.get("edit")),
+    })
+
+
+@require_POST
+def withdraw_trade_url(request):
+    """Save (or replace) the player's Steam trade URL, then return to the card."""
+    player = current_player(request)
+    if not player:
+        return redirect("login")
+    rec_id = _int(request.POST.get("record_id"))
+    url = (request.POST.get("trade_url") or "").strip()
+    back = f"{reverse('withdraw')}?id={rec_id}"
+
+    if not TRADE_URL_RE.match(url):
+        messages.error(
+            request,
+            "Trade URL noto'g'ri. U quyidagi ko'rinishda bo'lishi kerak: "
+            "https://steamcommunity.com/tradeoffer/new/?partner=123456&token=AbCdEfGh")
+        return redirect(f"{back}&edit=1")
+
+    player.trade_url = url
+    player.save(update_fields=["trade_url", "last_seen"])
+    messages.success(request, "Trade URL saqlandi ✅")
+    return redirect(back)
+
+
+@require_POST
+def withdraw_create(request):
+    """File the withdraw request and lock the skin behind it."""
+    player = current_player(request)
+    if not player:
+        return redirect("login")
+    rec_id = _int(request.POST.get("record_id"))
+    if not player.trade_url:
+        return redirect(f"{reverse('withdraw')}?id={rec_id}")
+
+    with transaction.atomic():
+        # Re-read under a row lock: two quick submits must not file two requests
+        # for one skin (no-op on SQLite, real on the server's Postgres).
+        rec = (player.opens.select_for_update()
+               .filter(pk=rec_id, sold=False, is_locked=False).first())
+        if not rec:
+            messages.error(request, "Skin topilmadi yoki allaqachon band qilingan")
+            return redirect("inventory")
+        if player.withdraws.filter(status__in=WithdrawRequest.OPEN_STATUSES).exists():
+            messages.error(request, "Sizda hozircha faol so'rov bor, iltimos kuting")
+            return redirect("inventory")
+
+        WithdrawRequest.objects.create(
+            player=player, record=rec, case_name=rec.case_name,
+            trade_url=player.trade_url)
+        rec.is_locked = True
+        rec.save(update_fields=["is_locked"])
+
+    notify_withdraw(player.telegram_id, WithdrawRequest.PENDING, rec.skin_name)
+    messages.success(
+        request,
+        "So'rovingiz qabul qilindi ✅. Adminlarimiz tez orada ko'rib chiqib, "
+        "skiningizni Steam inventaringizga tushirib beradi.")
+    return redirect("inventory")
 
 
 # ---------------------------------------------------------------- upgrade
@@ -572,8 +684,12 @@ def battle_join(request, pk):
         seats.append(_seat_of(player, len(seats)))
         b.seats = seats
         b.save(update_fields=["seats"])
-        if len(seats) >= b.n_players:
+        resolved = len(seats) >= b.n_players
+        if resolved:
             _resolve_battle(b)
+    if resolved:
+        # this join filled & resolved the battle → play the reveal once
+        return redirect(reverse("battle", args=[pk]) + "?reveal=1")
     return redirect("battle", pk=pk)
 
 
@@ -760,6 +876,10 @@ def kontrakt_play(request):
 
 def dostlar(request):
     return render(request, "simple.html", {"ACTIVE": "dostlar"})
+
+
+def promocode(request):
+    return render(request, "simple.html", {"ACTIVE": "promocode"})
 
 
 # ---------------------------------------------------------------- profile

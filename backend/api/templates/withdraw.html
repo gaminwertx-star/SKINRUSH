@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}Yechib olish — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="wd-view">
+  <a class="wd-back" href="{% url 'inventory' %}">‹ {{ S.nav_inventar }}</a>
+
+  <div class="cases-head">
+    <h2 class="section-title">Skinni yechib olish</h2>
+  </div>
+
+  <div class="wd-layout">
+    <!-- skin card -->
+    <div class="wd-skin" style="--rc:{{ skin.color }}">
+      <div class="citem__wear">{{ skin.wear|wearabbr }}</div>
+      <div class="wd-skin__art"><img src="{{ skin.img|img }}" alt="{{ skin.name }}" /></div>
+      <div class="wd-skin__weapon">{{ skin.weapon }}</div>
+      <div class="wd-skin__name">{{ skin.finish }}</div>
+      <div class="wd-skin__price">
+        <img class="coin-img" src="/images/coin.png" alt="" /> {{ skin.price|fmt }}
+      </div>
+      {% if skin.case_name %}
+        <div class="wd-skin__case">{{ skin.case_name }}</div>
+      {% endif %}
+    </div>
+
+    <!-- step panel -->
+    <div class="wd-panel">
+      {% if active %}
+        <div class="wd-alert wd-alert--warn">
+          <b>Sizda hozircha faol so'rov bor</b>
+          <p>
+            «{{ active.record.skin_name }}» bo'yicha so'rovingiz ko'rib chiqilmoqda.
+            Yangi so'rov yuborish uchun u yakunlanishini kuting.
+          </p>
+        </div>
+        <a class="btn btn--outline" href="{% url 'inventory' %}">{{ S.nav_inventar }}ga qaytish</a>
+
+      {% elif editing %}
+        <div class="wd-step">1-qadam · Steam trade URL</div>
+        <p class="wd-hint">
+          Skin aynan shu havola orqali yuboriladi. Uni Steam’dan oling:
+          <a href="https://steamcommunity.com/my/tradeoffers/privacy" target="_blank" rel="noopener">
+            Inventory → Trade Offers → Who can send me Trade Offers</a>.
+        </p>
+        <form method="post" action="{% url 'withdraw-trade-url' %}" class="wd-form">{% csrf_token %}
+          <input type="hidden" name="record_id" value="{{ skin.id }}" />
+          <label class="ss-field">
+            <span>Trade URL</span>
+            <input type="url" name="trade_url" required
+                   value="{{ trade_url }}"
+                   placeholder="https://steamcommunity.com/tradeoffer/new/?partner=123456&token=AbCdEfGh" />
+          </label>
+          <button type="submit" class="btn btn--teal">Saqlash</button>
+        </form>
+
+      {% else %}
+        <div class="wd-step">2-qadam · Tasdiqlash</div>
+        <div class="wd-url">
+          <div class="wd-url__label">Steam trade URL</div>
+          <div class="wd-url__value">{{ trade_url }}</div>
+          <a class="wd-url__edit" href="{% url 'withdraw' %}?id={{ skin.id }}&edit=1">O'zgartirish</a>
+        </div>
+        <p class="wd-hint">
+          Tasdiqlagach skin inventaringizda band qilinadi — uni sotish, yaxshilash
+          yoki kontraktga qo'shish mumkin bo'lmaydi. Rad etilsa qaytariladi.
+        </p>
+        <form method="post" action="{% url 'withdraw-create' %}" class="wd-form">{% csrf_token %}
+          <input type="hidden" name="record_id" value="{{ skin.id }}" />
+          <button type="submit" class="btn btn--gold wd-submit">Yechib olishni tasdiqlash</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+{% endblock %}

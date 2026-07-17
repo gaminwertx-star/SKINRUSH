@@ -213,7 +213,7 @@ def sell(request):
 
     # 1) Selling an item already in the inventory.
     if rec_id and player:
-        rec = player.opens.filter(pk=rec_id, sold=False).first()
+        rec = player.opens.filter(pk=rec_id, sold=False, is_locked=False).first()
         if not rec:
             return Response({"error": "Topilmadi"}, status=400)
         rec.sold = True
@@ -521,12 +521,19 @@ UPGRADE_EDGE = 0.9
 # Upgrade now runs on the player's REAL personal inventory (the skins kept via
 # "Olish"): the source skin is consumed and, on a win, the target is added.
 def _owned_rows(request):
-    """Real owned inventory, newest first: [{uid, value, name, image, rarity, color, wear}]."""
+    """Real *spendable* inventory, newest first: [{uid, value, name, image, rarity,
+    color, wear}].
+
+    Skins held by an open withdraw request are excluded — they are promised to
+    Steam, so they must not be upgradable or contractable. This is the single
+    choke point both flows read, so filtering here covers them.
+    """
     player = current_player(request)
     if player:
         return [{"uid": r.id, "value": r.skin_price, "name": r.skin_name,
                  "image": r.skin_image, "rarity": r.rarity, "color": r.color, "wear": r.wear}
-                for r in player.opens.filter(sold=False).order_by("-created_at")]
+                for r in player.opens.filter(sold=False, is_locked=False)
+                                     .order_by("-created_at")]
     return [{"uid": r["id"], "value": r["price"], "name": r["name"], "image": r["image"],
              "rarity": r["rarity"], "color": r["color"], "wear": r["wear"]}
             for r in reversed(request.session.get("inv", []))]

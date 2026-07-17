@@ -21,11 +21,20 @@
             <div class="citem__price"><img class="coin-img" src="/images/coin.png" alt="" /> {{ it.price|fmt }}</div>
           </a>
           <div class="inv-cell__acts">
-            <form method="post" action="{% url 'sell' %}" class="ss-inline">{% csrf_token %}
-              <input type="hidden" name="record_id" value="{{ it.id }}" />
-              <button class="btn btn--gold btn--sm">{{ S.sell_btn }} · +{{ it.price|fmt }}</button>
-            </form>
-            <a class="btn btn--outline btn--sm" href="{% url 'upgrade' %}?from={{ it.id }}">{{ S.nav_yaxshilash }}</a>
+            {% if it.locked %}
+              <div class="inv-locked" title="Yechib olish so'rovi ko'rib chiqilmoqda">
+                🔒 Yechib olinmoqda
+              </div>
+            {% else %}
+              <form method="post" action="{% url 'sell' %}" class="ss-inline">{% csrf_token %}
+                <input type="hidden" name="record_id" value="{{ it.id }}" />
+                <button class="btn btn--gold btn--sm">{{ S.sell_btn }} · +{{ it.price|fmt }}</button>
+              </form>
+              <a class="btn btn--outline btn--sm" href="{% url 'upgrade' %}?from={{ it.id }}">{{ S.nav_yaxshilash }}</a>
+              {% if can_withdraw %}
+                <a class="btn btn--teal btn--sm" href="{% url 'withdraw' %}?id={{ it.id }}">Yechib olish</a>
+              {% endif %}
+            {% endif %}
           </div>
         </div>
       {% endfor %}

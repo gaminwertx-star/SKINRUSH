@@ -78,6 +78,7 @@ function switchView(view) {
   );
   if (view === "dashboard") renderDashboard();
   else if (view === "users") renderUsers();
+  else if (view === "withdraws") renderWithdraws();
   else if (view === "cases") renderCases();
 }
 
@@ -92,6 +93,7 @@ async function renderDashboard() {
     </div></div>
     <div class="loading">Yuklanmoqda…</div>`;
   const s = await jget(`${API}/stats/`);
+  setWithdrawBadge(s.withdraws_pending);
   const cards = [
     { n: s.players, label: "Foydalanuvchilar", c: "var(--green)" },
     { n: s.cases, label: "Keyslar", c: "var(--violet)" },
@@ -105,6 +107,14 @@ async function renderDashboard() {
       <div class="page-title">Dashboard</div>
       <div class="page-sub">Umumiy ko'rsatkichlar</div>
     </div></div>
+    ${s.withdraws_pending ? `
+      <div class="alert-card" id="wdAlert">
+        <div>
+          <div class="alert-card__title">${fmt(s.withdraws_pending)} ta withdraw so'rovi kutmoqda</div>
+          <div class="alert-card__sub">Oxirgi 24 soatda: <b>${fmt(s.withdraws_pending_24h)}</b> ta yangi so'rov</div>
+        </div>
+        <button class="admin-btn">Ko'rish</button>
+      </div>` : ""}
     <div class="stat-grid">
       ${cards.map((c) => `
         <div class="stat-card" style="--sc:${c.c}">
@@ -112,7 +122,203 @@ async function renderDashboard() {
           <div class="stat-card__label">${c.label}</div>
         </div>`).join("")}
     </div>`;
+  const alert = document.getElementById("wdAlert");
+  if (alert) alert.addEventListener("click", () => switchView("withdraws"));
 }
+
+// ---------- withdraws ----------
+const WD_STATUS = {
+  pending:   { label: "Kutilmoqda",  c: "var(--gold)" },
+  approved:  { label: "Tasdiqlandi", c: "var(--blue)" },
+  sent:      { label: "Yuborildi",   c: "var(--violet)" },
+  completed: { label: "Yakunlandi",  c: "var(--green)" },
+  rejected:  { label: "Rad etildi",  c: "var(--pink)" },
+};
+// Which buttons a row offers, by status: [label, endpoint suffix].
+const WD_ACTIONS = {
+  pending:  [["✅ Tasdiqlash", "approve"], ["❌ Rad etish", "reject"]],
+  approved: [["📤 Yuborildi", "mark-sent"]],
+  sent:     [["📥 Tushdi (yakunlash)", "complete"]],
+};
+
+function setWithdrawBadge(n) {
+  const b = document.getElementById("wdBadge");
+  if (!b) return;
+  b.textContent = fmt(n);
+  b.hidden = !n;
+}
+
+let wdFilter = "pending";
+
+async function renderWithdraws() {
+  main.innerHTML = `
+    <div class="page-head"><div>
+      <div class="page-title">Withdraw so'rovlari</div>
+      <div class="page-sub">Skinni Steam inventariga chiqarish — qo'lda tasdiqlanadi</div>
+    </div></div>
+    <div class="filter-row" id="wdFilters"></div>
+    <div id="wdBody"><div class="loading">Yuklanmoqda…</div></div>`;
+  document.getElementById("wdFilters").addEventListener("click", (e) => {
+    const chip = e.target.closest(".filter-chip");
+    if (!chip) return;
+    wdFilter = chip.dataset.status;
+    loadWithdraws();
+  });
+  loadWithdraws();
+}
+
+async function loadWithdraws() {
+  const body = document.getElementById("wdBody");
+  const d = await jget(`${API}/withdraws/?status=${encodeURIComponent(wdFilter)}`);
+
+  const tabs = [["all", "Hammasi", d.total], ...Object.keys(WD_STATUS).map((k) =>
+    [k, WD_STATUS[k].label, d.counts[k] || 0])];
+  document.getElementById("wdFilters").innerHTML = tabs.map(([k, label, n]) => `
+    <button class="filter-chip ${k === wdFilter ? "is-active" : ""}" data-status="${k}">
+      ${label} <span class="filter-chip__n">${fmt(n)}</span>
+    </button>`).join("");
+  setWithdrawBadge(d.counts.pending || 0);
+
+  if (!d.rows.length) {
+    body.innerHTML = `<div class="loading">Bu holatda so'rov yo'q.</div>`;
+    return;
+  }
+  body.innerHTML = `<div class="wd-list">${d.rows.map(wdCard).join("")}</div>`;
+
+  body.querySelectorAll("[data-act]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const { id, act } = btn.dataset;
+      if (act === "reject") openRejectModal(+id, btn.dataset.skin);
+      else runWithdrawAction(+id, act, {}, btn);
+    })
+  );
+  body.querySelectorAll("[data-copy]").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(btn.dataset.copy);
+        const old = btn.textContent;
+        btn.textContent = "✓ Nusxalandi";
+        setTimeout(() => { btn.textContent = old; }, 1200);
+      } catch (_) {
+        btn.textContent = "Nusxalab bo'lmadi";
+      }
+    })
+  );
+}
+
+function wdCard(w) {
+  const st = WD_STATUS[w.status] || { label: w.status, c: "#555" };
+  const acts = WD_ACTIONS[w.status] || [];
+  return `
+    <div class="wd-card">
+      <div class="wd-card__skin">
+        <img class="wd-card__img" src="${IMG(w.skin.image)}" alt=""
+             onerror="this.style.visibility='hidden'" />
+        <div>
+          <div class="cell-name">${esc(w.skin.name)}</div>
+          <div class="cell-muted" style="font-size:12px">
+            ${esc(w.skin.wear || "—")} · <span class="coin">${fmt(w.skin.price)}</span>
+          </div>
+          <div class="cell-muted" style="font-size:12px">Key: ${esc(w.case_name || "—")}</div>
+        </div>
+      </div>
+
+      <div class="wd-card__user">
+        <div class="cell-name">${esc(w.player.name)}</div>
+        ${w.player.username ? `<div class="cell-muted" style="font-size:12px">@${esc(w.player.username)}</div>` : ""}
+        <div class="cell-muted" style="font-size:12px">TG ID: ${w.player.telegram_id || "—"}</div>
+        <div class="cell-muted" style="font-size:12px">${dt(w.created_at)}</div>
+      </div>
+
+      <div class="wd-card__url">
+        <div class="wd-card__url-val" title="${esc(w.trade_url)}">${esc(w.trade_url)}</div>
+        <div class="wd-card__url-acts">
+          <button class="copy-btn" data-copy="${esc(w.trade_url)}">Nusxalash</button>
+          <a class="copy-btn" href="${esc(w.trade_url)}" target="_blank" rel="noopener">Ochish ↗</a>
+        </div>
+      </div>
+
+      <div class="wd-card__side">
+        <span class="status-badge" style="--bc:${st.c}">${st.label}</span>
+        ${w.status === "rejected" && w.reject_reason
+          ? `<div class="wd-card__reason">Sabab: ${esc(w.reject_reason)}</div>` : ""}
+        <div class="wd-card__acts">
+          ${acts.map(([label, act]) => `
+            <button class="admin-btn ${act === "reject" ? "admin-btn--danger" : ""}"
+                    data-id="${w.id}" data-act="${act}" data-skin="${esc(w.skin.name)}">
+              ${label}
+            </button>`).join("")}
+        </div>
+      </div>
+    </div>`;
+}
+
+async function runWithdrawAction(id, act, body, btn) {
+  if (btn) btn.disabled = true;
+  const res = await jpost(`${API}/withdraws/${id}/${act}/`, body);
+  if (res.ok && res.data.ok) {
+    loadWithdraws();
+    return true;
+  }
+  if (btn) btn.disabled = false;
+  // A 409 means someone else already moved it — reload so the row tells the truth.
+  if (res.data.error) {
+    const body_ = document.getElementById("wdBody");
+    if (body_) {
+      const note = document.createElement("div");
+      note.className = "wd-error";
+      note.textContent = res.data.error;
+      body_.prepend(note);
+      setTimeout(() => note.remove(), 4000);
+    }
+    loadWithdraws();
+  }
+  return false;
+}
+
+// ---------- reject modal ----------
+const rejectModal = document.getElementById("rejectModal");
+const rejectReason = document.getElementById("rejectReason");
+const rejectError = document.getElementById("rejectError");
+const rejectSub = document.getElementById("rejectSub");
+const rejectConfirm = document.getElementById("rejectConfirm");
+let rejectId = null;
+
+function openRejectModal(id, skinName) {
+  rejectId = id;
+  rejectReason.value = "";
+  rejectError.textContent = "";
+  rejectSub.textContent = skinName ? `${skinName} — skin foydalanuvchiga qaytariladi.`
+                                   : "Skin foydalanuvchiga qaytariladi.";
+  rejectModal.hidden = false;
+  rejectReason.focus();
+}
+
+function closeRejectModal() {
+  rejectModal.hidden = true;
+  rejectId = null;
+}
+
+document.getElementById("rejectCancel").addEventListener("click", closeRejectModal);
+rejectModal.addEventListener("click", (e) => {
+  if (e.target === rejectModal) closeRejectModal();   // click the backdrop
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !rejectModal.hidden) closeRejectModal();
+});
+
+rejectConfirm.addEventListener("click", async () => {
+  const reason = rejectReason.value.trim();
+  if (!reason) {
+    rejectError.textContent = "Sababni yozing — u foydalanuvchiga yuboriladi.";
+    return;
+  }
+  rejectConfirm.disabled = true;
+  const ok = await runWithdrawAction(rejectId, "reject", { reason });
+  rejectConfirm.disabled = false;
+  if (ok) closeRejectModal();
+  else rejectError.textContent = "Rad etib bo'lmadi — qayta urinib ko'ring.";
+});
 
 // ---------- users ----------
 async function renderUsers() {

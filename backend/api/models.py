@@ -89,6 +89,9 @@ class Player(models.Model):
     # SKINRUSH account (email/username/phone + password login). Phone is unique
     # so it can be used to log in; null lets Telegram-only players omit it.
     phone = models.CharField(max_length=32, blank=True, null=True, unique=True, db_index=True)
+    # Steam trade URL. Asked once on the first withdraw and reused after that;
+    # the player can change it from the withdraw page.
+    trade_url = models.URLField(max_length=300, blank=True)
 
     balance = models.BigIntegerField(default=STARTING_BALANCE)  # current coins
     coins_purchased = models.BigIntegerField(default=0)         # total coins ever bought
@@ -126,7 +129,13 @@ class OpenRecord(models.Model):
     rarity = models.CharField(max_length=40, blank=True)
     color = models.CharField(max_length=9, blank=True)
     wear = models.CharField(max_length=40, blank=True)
+    # Consumed: sold for coins, fed into an upgrade/contract, or withdrawn to
+    # Steam. Anything with sold=True has left the inventory for good.
     sold = models.BooleanField(default=False)
+    # Held by an open WithdrawRequest — still the player's, but on its way to
+    # Steam, so it must not be sellable/upgradable/contractable meanwhile.
+    # Cleared again if the request is rejected.
+    is_locked = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
@@ -166,6 +175,49 @@ class Battle(models.Model):
 
     def __str__(self):
         return f"Battle #{self.pk} ({self.n_players}p, {self.total_cost})"
+
+
+class WithdrawRequest(models.Model):
+    """A request to move a won skin out to the player's real Steam inventory.
+
+    Nothing here is automated: an admin reads the request in the panel, sends the
+    trade offer by hand in Steam, and walks the row along
+    ``pending -> approved -> sent -> completed`` (or ``rejected``). Every step
+    notifies the player over the Telegram bot.
+
+    The skin itself is `record`; while the request is open the record is locked
+    so it cannot also be sold, upgraded or burned in a contract. A rejection
+    unlocks it, a completion marks it sold (it now lives in real Steam).
+    """
+
+    PENDING, APPROVED, SENT, COMPLETED, REJECTED = (
+        "pending", "approved", "sent", "completed", "rejected")
+    STATUSES = [
+        (PENDING, "Kutilmoqda"), (APPROVED, "Tasdiqlandi"), (SENT, "Yuborildi"),
+        (COMPLETED, "Yakunlandi"), (REJECTED, "Rad etildi"),
+    ]
+    # A player may hold only one request in these states at a time.
+    OPEN_STATUSES = (PENDING, APPROVED, SENT)
+
+    player = models.ForeignKey(Player, on_delete=models.CASCADE,
+                               related_name="withdraws")
+    record = models.ForeignKey(OpenRecord, on_delete=models.CASCADE,
+                               related_name="withdraws")
+    # Snapshots, kept for the log the same way OpenRecord snapshots its skin:
+    # they must stay readable even if the catalog or the player's URL changes.
+    case_name = models.CharField(max_length=120, blank=True)
+    trade_url = models.URLField(max_length=300)
+    status = models.CharField(max_length=16, default=PENDING, choices=STATUSES,
+                              db_index=True)
+    reject_reason = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)   # bumped on every status move
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.record.skin_name} -> {self.player} ({self.status})"
 
 
 class CoinPurchase(models.Model):

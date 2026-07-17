@@ -30,6 +30,9 @@
       <nav class="sidebar__nav" id="nav">
         <button class="nav-item is-active" data-view="dashboard">Dashboard</button>
         <button class="nav-item" data-view="users">Foydalanuvchilar</button>
+        <button class="nav-item" data-view="withdraws">
+          Withdraw so'rovlari <span class="nav-badge" id="wdBadge" hidden></span>
+        </button>
         <button class="nav-item" data-view="cases">Keyslar</button>
       </nav>
       <div class="sidebar__foot">
@@ -40,6 +43,21 @@
     <main class="main" id="main"></main>
   </div>
 
-  <script src="/admin/admin.js?v=4"></script>
+  <!-- REJECT MODAL (withdraw) -->
+  <div class="modal" id="rejectModal" hidden>
+    <div class="modal__card">
+      <div class="modal__title">So'rovni rad etish</div>
+      <div class="modal__sub" id="rejectSub"></div>
+      <textarea class="admin-input modal__area" id="rejectReason" rows="3"
+                placeholder="Sabab — foydalanuvchiga shu matn yuboriladi"></textarea>
+      <div class="modal__error" id="rejectError"></div>
+      <div class="modal__acts">
+        <button class="admin-btn admin-btn--ghost" id="rejectCancel">Bekor qilish</button>
+        <button class="admin-btn admin-btn--danger" id="rejectConfirm">Rad etish</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/admin/admin.js?v=5"></script>
 </body>
 </html>

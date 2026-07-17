@@ -11,6 +11,7 @@ from django.urls import include, path, re_path
 from django.views.static import serve as static_serve
 
 from api import pages
+from api import telegram_bot
 
 FRONTEND_DIR = settings.FRONTEND_DIR
 
@@ -41,6 +42,10 @@ urlpatterns = [
 
     path("inventar/", pages.inventory, name="inventory"),
 
+    path("yechish/", pages.withdraw, name="withdraw"),
+    path("yechish/trade-url/", pages.withdraw_trade_url, name="withdraw-trade-url"),
+    path("yechish/tasdiqlash/", pages.withdraw_create, name="withdraw-create"),
+
     path("yaxshilash/", pages.upgrade, name="upgrade"),
     path("yaxshilash/play/", pages.upgrade_play, name="upgrade-play"),
 
@@ -54,10 +59,12 @@ urlpatterns = [
     path("kontraktlar/", pages.kontraktlar, name="kontraktlar"),
     path("kontraktlar/create/", pages.kontrakt_play, name="kontrakt-play"),
     path("dostlar/", pages.dostlar, name="dostlar"),
+    path("promokod/", pages.promocode, name="promocode"),
     path("profil/", pages.profile, name="profile"),
 
     # ---- auth ----
     path("tg/webapp-login/", pages.webapp_login, name="webapp-login"),
+    path("tg/webhook/<str:secret>/", telegram_bot.webhook, name="tg-webhook"),
     path("kirish/", pages.login_page, name="login"),
     path("royxat/", pages.register_page, name="register"),
     path("chiqish/", pages.logout_page, name="logout"),
