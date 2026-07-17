@@ -3,48 +3,111 @@
 {% block title %}{{ S.nav_inventar }} — SKINRUSH{% endblock %}
 {% block content %}
 
-<section class="inventory-view">
-  <div class="cases-head">
+<section class="iv">
+  <div class="iv-head">
     <h2 class="section-title">{{ S.nav_inventar }}</h2>
-    <div class="inv-total">{{ S.row_value }}: <b>{{ total|fmt }}</b> <img class="coin-img" src="/images/coin.png" alt="coin" /></div>
+    {% if total %}
+      <div class="iv-total">{{ S.row_value }}: <b>{{ total|fmt }}</b>
+        <img class="coin-img" src="/images/coin.png" alt="coin" /></div>
+    {% endif %}
+  </div>
+
+  <!-- tabs -->
+  <div class="iv-tabs">
+    {% for t in tabs %}
+      <a class="iv-tab {% if t.active %}is-active{% endif %}"
+         href="{% url 'inventory' %}?tab={{ t.key }}">
+        {{ t.label }}{% if t.n %} <span class="iv-tab__n">{{ t.n }}</span>{% endif %}
+      </a>
+    {% endfor %}
   </div>
 
   {% if items %}
-    <div class="case-contents__grid inv-grid">
+    <div class="iv-grid">
       {% for it in items %}
-        <div class="inv-cell">
-          <a class="citem citem-link" href="{% url 'skin' %}?name={{ it.name|urlencode }}" style="--rc:{{ it.color }}" title="{{ it.name }}">
-            <div class="citem__wear">{{ it.wear|wearabbr }}</div>
-            <div class="citem__art"><img class="citem__img" src="{{ it.img|img }}" alt="" loading="lazy" /></div>
-            <div class="citem__weapon">{{ it.weapon }}</div>
-            <div class="citem__name">{{ it.finish }}</div>
-            <div class="citem__price"><img class="coin-img" src="/images/coin.png" alt="" /> {{ it.price|fmt }}</div>
-          </a>
-          <div class="inv-cell__acts">
-            {% if it.locked %}
-              <div class="inv-locked" title="Yechib olish so'rovi ko'rib chiqilmoqda">
-                🔒 Yechib olinmoqda
-              </div>
-            {% else %}
-              <form method="post" action="{% url 'sell' %}" class="ss-inline">{% csrf_token %}
-                <input type="hidden" name="record_id" value="{{ it.id }}" />
-                <button class="btn btn--gold btn--sm">{{ S.sell_btn }} · +{{ it.price|fmt }}</button>
-              </form>
-              <a class="btn btn--outline btn--sm" href="{% url 'upgrade' %}?from={{ it.id }}">{{ S.nav_yaxshilash }}</a>
-              {% if can_withdraw %}
-                <a class="btn btn--teal btn--sm" href="{% url 'withdraw' %}?id={{ it.id }}">Yechib olish</a>
-              {% endif %}
-            {% endif %}
+        <a class="iv-card iv-card--{{ it.state }}" style="--rc:{{ it.color }}"
+           href="{% url 'inventory-item' it.id %}" title="{{ it.name }}">
+          <div class="iv-card__top">
+            <span class="iv-card__wear">{{ it.wear|wearabbr }}</span>
+            {% if it.state != 'owned' %}<span class="iv-card__x">✖</span>{% endif %}
           </div>
-        </div>
+          <div class="iv-card__art"><img src="{{ it.img|img }}" alt="" loading="lazy" /></div>
+          <div class="iv-card__weapon">{{ it.weapon }}</div>
+          <div class="iv-card__name">{{ it.finish }}</div>
+          <div class="iv-card__badges">
+            <span class="iv-badge iv-badge--{{ it.state }}">{{ it.state_label }}</span>
+          </div>
+          <div class="iv-card__meta">
+            <span class="iv-chip iv-chip--coin">{{ it.price|fmt }}
+              <img class="coin-img" src="/images/coin.png" alt="" /></span>
+            <span class="iv-chip iv-chip--usd">{% if it.usd %}${{ it.usd }}{% else %}—{% endif %}</span>
+          </div>
+        </a>
       {% endfor %}
     </div>
   {% else %}
-    <div class="ss-empty ss-empty--big">
-      Inventaringiz bo'sh. Keys oching va skinni "Olish" tugmasi bilan saqlang.
-      <a class="btn btn--teal" href="{% url 'home' %}#cases">{{ S.nav_keyslar }}</a>
-    </div>
+    <div class="iv-empty">{{ empty_text }}</div>
   {% endif %}
+
+  <!-- sell all -->
+  <button class="iv-sellall" type="button" id="sellAllBtn">Hammasini sotish</button>
 </section>
+
+<!-- confirm modal -->
+<div class="iv-modal" id="sellAllModal" hidden>
+  <div class="iv-modal__card" role="dialog" aria-modal="true" aria-labelledby="sellAllTitle">
+    <div class="iv-modal__head">
+      <div class="iv-modal__title" id="sellAllTitle">Sotishni tasdiqlash</div>
+      <button class="iv-modal__x" type="button" id="sellAllClose" aria-label="Yopish">✕</button>
+    </div>
+
+    {% if sell_all_count %}
+      <div class="iv-modal__body">
+        <div class="iv-sum">
+          <span>Sotiladigan skinlar</span><b>{{ sell_all_count }} ta</b>
+        </div>
+        <div class="iv-sum">
+          <span>Jami narxi</span>
+          <b class="iv-sum__gold">+{{ sell_all_total|fmt }}
+            <img class="coin-img" src="/images/coin.png" alt="" /></b>
+        </div>
+        <div class="iv-sum iv-sum--total">
+          <span>Sotgandan keyingi balans</span>
+          <b class="iv-sum__gold">{{ balance|add:sell_all_total|fmt }}
+            <img class="coin-img" src="/images/coin.png" alt="" /></b>
+        </div>
+        <p class="iv-modal__note">Bu amalni ortga qaytarib bo'lmaydi.</p>
+      </div>
+      <div class="iv-modal__acts">
+        <button class="iv-btn iv-btn--ghost" type="button" id="sellAllCancel">Bekor qilish</button>
+        <form method="post" action="{% url 'sell-all' %}">{% csrf_token %}
+          <button class="iv-btn iv-btn--ok" type="submit">OK</button>
+        </form>
+      </div>
+    {% else %}
+      <div class="iv-modal__body">
+        <p class="iv-modal__msg">Sotish uchun buyumlar yo'q</p>
+      </div>
+      <div class="iv-modal__acts">
+        <button class="iv-btn iv-btn--ok" type="button" id="sellAllCancel">OK</button>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  (function () {
+    var modal = document.getElementById('sellAllModal');
+    var open = document.getElementById('sellAllBtn');
+    var close = function () { modal.hidden = true; };
+    open.addEventListener('click', function () { modal.hidden = false; });
+    document.getElementById('sellAllClose').addEventListener('click', close);
+    document.getElementById('sellAllCancel').addEventListener('click', close);
+    modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !modal.hidden) close();
+    });
+  })();
+</script>
 
 {% endblock %}

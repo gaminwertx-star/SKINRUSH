@@ -115,10 +115,31 @@ class Player(models.Model):
 
 
 class OpenRecord(models.Model):
-    """One case-opening by a player — 'which case gave what' history.
+    """One skin a player has owned — the inventory and its whole history.
 
-    Skin/case details are stored as a snapshot so the history survives a catalog
-    re-seed (which recreates Case/CaseItem rows)."""
+    Despite the name it covers every way a skin arrives (see `source`), not just
+    case openings. Skin/case details are stored as a snapshot so the history
+    survives a catalog re-seed (which recreates Case/CaseItem rows).
+    """
+
+    # How the skin arrived. Blank on rows written before this field existed —
+    # their real source is unknowable, so they render as "—" rather than a guess.
+    SRC_CASE, SRC_BATTLE, SRC_CONTRACT, SRC_UPGRADE, SRC_SHOP = (
+        "case", "battle", "contract", "upgrade", "shop")
+    SOURCES = [
+        (SRC_CASE, "Keys"), (SRC_BATTLE, "Jang"), (SRC_CONTRACT, "Kontrakt"),
+        (SRC_UPGRADE, "Yangilash"), (SRC_SHOP, "Do'kon"),
+    ]
+    # How the skin left, when `sold` is True. `sold` alone only says the skin is
+    # gone; this says whether it was sold for coins, burned in an upgrade or a
+    # contract, or really withdrawn to Steam — which is what the inventory tabs
+    # and the "Holati" row need to tell apart. Blank while still owned.
+    DISP_SOLD, DISP_UPGRADED, DISP_CONTRACT, DISP_WITHDRAWN = (
+        "sold", "upgraded", "contract", "withdrawn")
+    DISPOSITIONS = [
+        (DISP_SOLD, "Sotilgan"), (DISP_UPGRADED, "Yangilashga ketgan"),
+        (DISP_CONTRACT, "Kontraktga ketgan"), (DISP_WITHDRAWN, "Chiqarilgan"),
+    ]
 
     player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="opens")
     case = models.ForeignKey(Case, on_delete=models.SET_NULL, null=True, blank=True)
@@ -129,9 +150,18 @@ class OpenRecord(models.Model):
     rarity = models.CharField(max_length=40, blank=True)
     color = models.CharField(max_length=9, blank=True)
     wear = models.CharField(max_length=40, blank=True)
+    # Real Steam Market value. No price source feeds this yet, so it stays null
+    # and the UI shows "—"; never derive it from skin_price, the two are not
+    # proportional.
+    steam_price_usd = models.DecimalField(max_digits=10, decimal_places=2,
+                                          null=True, blank=True)
+    source = models.CharField(max_length=16, choices=SOURCES, blank=True,
+                              db_index=True)
     # Consumed: sold for coins, fed into an upgrade/contract, or withdrawn to
-    # Steam. Anything with sold=True has left the inventory for good.
+    # Steam. Anything with sold=True has left the inventory for good; `disposition`
+    # says which of those happened.
     sold = models.BooleanField(default=False)
+    disposition = models.CharField(max_length=16, choices=DISPOSITIONS, blank=True)
     # Held by an open WithdrawRequest — still the player's, but on its way to
     # Steam, so it must not be sellable/upgradable/contractable meanwhile.
     # Cleared again if the request is rejected.

@@ -41,6 +41,8 @@ urlpatterns = [
     path("sotish/", pages.sell, name="sell"),
 
     path("inventar/", pages.inventory, name="inventory"),
+    path("inventar/hammasini-sotish/", pages.sell_all, name="sell-all"),
+    path("inventar/<int:pk>/", pages.inventory_item, name="inventory-item"),
 
     path("yechish/", pages.withdraw, name="withdraw"),
     path("yechish/trade-url/", pages.withdraw_trade_url, name="withdraw-trade-url"),

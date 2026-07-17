@@ -160,7 +160,8 @@ def _advance(pk, allowed_from, new_status, reason=""):
         elif new_status == WithdrawRequest.COMPLETED:
             # It lives in real Steam now, so it leaves the virtual inventory for
             # good. is_locked stays on so it can never be re-withdrawn.
-            OpenRecord.objects.filter(pk=w.record_id).update(sold=True)
+            OpenRecord.objects.filter(pk=w.record_id).update(
+                sold=True, disposition=OpenRecord.DISP_WITHDRAWN)
 
     # Outside the transaction: a slow or failing Telegram call must not roll
     # back a status the admin already committed.

@@ -77,7 +77,8 @@ def _bank_pending(request):
         OpenRecord.objects.create(
             player=player, case=case, case_name=pw["case_name"],
             skin_name=pw["name"], skin_image=pw["image"], skin_price=pw["price"],
-            rarity=pw["rarity"], color=pw["color"], wear=pw["wear"], sold=False)
+            rarity=pw["rarity"], color=pw["color"], wear=pw["wear"], sold=False,
+            source=OpenRecord.SRC_CASE)
     else:
         inv = request.session.get("inv", [])
         uid = request.session.get("inv_uid", 0) + 1
@@ -319,7 +320,8 @@ def sell(request):
         rec = player.opens.filter(pk=rec_id, sold=False, is_locked=False).first()
         if rec:
             rec.sold = True
-            rec.save(update_fields=["sold"])
+            rec.disposition = OpenRecord.DISP_SOLD
+            rec.save(update_fields=["sold", "disposition"])
             _credit(request, player, rec.skin_price)
             messages.success(request, f"Sotildi: {rec.skin_name} · +{rec.skin_price}")
         return redirect("inventory")
@@ -346,37 +348,177 @@ def sell(request):
 
 
 # ---------------------------------------------------------------- inventory
-def _inv_row(rid, name, image, price, rarity, color, wear, case_name, locked=False):
-    parts = name.split(" | ")
-    return {"id": rid, "name": name, "weapon": parts[0],
-            "finish": parts[1] if len(parts) > 1 else name,
-            "img": image, "price": price, "tier_label": rarity,
-            "color": color or "#b0c3d9", "wear": wear, "case_name": case_name,
-            "locked": locked}
+# The tabs across the top of the inventory. `key` is the ?tab= value.
+INV_TABS = [
+    ("all", "Barchasi"), ("owned", "Mavjud"),
+    ("sold", "Sotilgan"), ("withdrawn", "Chiqarilgan"),
+]
+INV_EMPTY = {
+    "all": "Sizning inventaringiz bo'sh",
+    "owned": "Sizning inventaringiz bo'sh",
+    "sold": "Siz hali skin sotmagansiz",
+    "withdrawn": "Siz hali skin chiqarmagansiz",
+}
+
+
+def _inv_row(rec, withdraw=None):
+    """One inventory card. `withdraw` is the record's latest WithdrawRequest, if
+    any — it decides the Chiqarilgan-tab status text."""
+    parts = rec.skin_name.split(" | ")
+    if withdraw and withdraw.status != WithdrawRequest.REJECTED:
+        # An in-flight request outranks the record's own state: the player cares
+        # where their skin is, not that it is technically still theirs. The label
+        # is inventory-worded ("Chiqarilgan"), not the admin-side status name
+        # ("Yakunlandi"), which means nothing next to a skin.
+        if withdraw.status == WithdrawRequest.COMPLETED:
+            state, label = "withdrawn", "Chiqarilgan"
+        else:
+            state, label = "withdrawing", "Chiqarilmoqda"
+    elif rec.sold:
+        state = rec.disposition or "gone"
+        label = dict(OpenRecord.DISPOSITIONS).get(rec.disposition, "Inventarda emas")
+    else:
+        state, label = "owned", "Mavjud"
+    return {
+        "id": rec.id, "name": rec.skin_name, "weapon": parts[0],
+        "finish": parts[1] if len(parts) > 1 else rec.skin_name,
+        "img": rec.skin_image, "price": rec.skin_price,
+        "tier_label": rec.rarity, "color": rec.color or "#b0c3d9",
+        "wear": rec.wear, "case_name": rec.case_name,
+        "usd": rec.steam_price_usd, "state": state, "state_label": label,
+        "locked": rec.is_locked, "sellable": not rec.sold and not rec.is_locked,
+    }
+
+
+def _guest_inv_row(r):
+    parts = r["name"].split(" | ")
+    return {"id": r["id"], "name": r["name"], "weapon": parts[0],
+            "finish": parts[1] if len(parts) > 1 else r["name"],
+            "img": r["image"], "price": r["price"], "tier_label": r["rarity"],
+            "color": r["color"] or "#b0c3d9", "wear": r["wear"],
+            "case_name": r["case_name"], "usd": None,
+            "state": "owned", "state_label": "Mavjud",
+            "locked": False, "sellable": True}
 
 
 def _inv_rows(request):
-    """Inventory as shown on the page. Unlike `_owned_rows` this keeps skins held
-    by an open withdraw request — the player should see where their skin went,
-    the template just swaps the actions for a "being withdrawn" badge."""
+    """Every skin the player has ever held, newest first — sold and withdrawn
+    ones included, since the tabs are built from them. Guests only ever have
+    what is sitting in their session."""
     player = current_player(request)
-    if player:
-        return [_inv_row(r.id, r.skin_name, r.skin_image, r.skin_price,
-                         r.rarity, r.color, r.wear, r.case_name, r.is_locked)
-                for r in player.opens.filter(sold=False).order_by("-created_at")]
-    return [_inv_row(r["id"], r["name"], r["image"], r["price"],
-                     r["rarity"], r["color"], r["wear"], r["case_name"])
-            for r in reversed(request.session.get("inv", []))]
+    if not player:
+        return [_guest_inv_row(r) for r in reversed(request.session.get("inv", []))]
+
+    recs = list(player.opens.all().order_by("-created_at"))
+    latest = {}
+    for w in (WithdrawRequest.objects.filter(record__in=recs)
+              .order_by("record_id", "-created_at")):
+        latest.setdefault(w.record_id, w)
+    return [_inv_row(r, latest.get(r.id)) for r in recs]
+
+
+def _inv_filter(rows, tab):
+    if tab == "owned":
+        return [r for r in rows if r["state"] == "owned"]
+    if tab == "sold":
+        return [r for r in rows if r["state"] == OpenRecord.DISP_SOLD]
+    if tab == "withdrawn":
+        return [r for r in rows if r["state"] in ("withdrawn", "withdrawing")]
+    return rows
 
 
 def inventory(request):
+    tab = request.GET.get("tab")
+    if tab not in dict(INV_TABS):
+        tab = "all"
     rows = _inv_rows(request)
+    shown = _inv_filter(rows, tab)
+    sellable = [r for r in rows if r["sellable"]]
+
     return render(request, "inventory.html", {
-        "ACTIVE": "inventar", "items": rows,
-        "total": sum(r["price"] for r in rows),
+        "ACTIVE": "inventar",
+        "items": shown,
+        "tabs": [{"key": k, "label": lbl, "n": len(_inv_filter(rows, k)),
+                  "active": k == tab} for k, lbl in INV_TABS],
+        "tab": tab,
+        "empty_text": INV_EMPTY[tab],
+        "total": sum(r["price"] for r in shown),
+        # "Hammasini sotish" always acts on the whole sellable inventory, not on
+        # whatever the current tab happens to show.
+        "sell_all_count": len(sellable),
+        "sell_all_total": sum(r["price"] for r in sellable),
+        "balance": _balance_of(request),
         # Guests have no withdraw flow at all — the button needs an account.
         "can_withdraw": current_player(request) is not None,
     })
+
+
+def _balance_of(request):
+    player = current_player(request)
+    return player.balance if player else get_state(request)["balance"]
+
+
+def inventory_item(request, pk):
+    """One skin out of the player's own inventory: what it is, where it came
+    from, and what can still be done with it."""
+    player = current_player(request)
+    if not player:
+        messages.error(request, "Bu sahifa uchun hisobingizga kiring")
+        return redirect("login")
+    rec = player.opens.filter(pk=pk).first()
+    if not rec:
+        messages.error(request, "Skin topilmadi")
+        return redirect("inventory")
+
+    # Two different questions, so two lookups: the skin's *state* ignores a
+    # rejected request (the skin came back, it is plain owned again), but the
+    # page still has to explain the rejection, so the note needs the last
+    # request whatever its status.
+    last = rec.withdraws.order_by("-created_at").first()
+    live = (rec.withdraws.exclude(status=WithdrawRequest.REJECTED)
+            .order_by("-created_at").first())
+    row = _inv_row(rec, live)
+    # "Manba" links back to the case only when the skin really came from one and
+    # that case still exists in the catalog.
+    src_link = (reverse("case", args=[rec.case.slug])
+                if rec.source == OpenRecord.SRC_CASE and rec.case else None)
+    return render(request, "inventory_item.html", {
+        "ACTIVE": "inventar", "it": row, "rec": rec, "owner": player,
+        "source_label": dict(OpenRecord.SOURCES).get(rec.source) or "—",
+        "source_link": src_link,
+        "withdraw": last,
+        "can_upgrade": row["sellable"],
+    })
+
+
+@require_POST
+def sell_all(request):
+    """Sell every skin the player can currently sell, in one go.
+
+    Skips anything held by a withdraw request — those are promised to Steam."""
+    player = current_player(request)
+    if player:
+        recs = list(player.opens.filter(sold=False, is_locked=False))
+        if not recs:
+            messages.error(request, "Sotish uchun buyumlar yo'q")
+            return redirect("inventory")
+        total = sum(r.skin_price for r in recs)
+        player.opens.filter(pk__in=[r.pk for r in recs]).update(
+            sold=True, disposition=OpenRecord.DISP_SOLD)
+        _credit(request, player, total)
+        messages.success(request, f"{len(recs)} ta skin sotildi · +{total:,}".replace(",", " "))
+        return redirect("inventory")
+
+    inv = request.session.get("inv", [])
+    if not inv:
+        messages.error(request, "Sotish uchun buyumlar yo'q")
+        return redirect("inventory")
+    total = sum(r["price"] for r in inv)
+    request.session["inv"] = []
+    request.session.modified = True
+    _credit(request, None, total)
+    messages.success(request, f"{len(inv)} ta skin sotildi · +{total:,}".replace(",", " "))
+    return redirect("inventory")
 
 
 # ---------------------------------------------------------------- withdraw
@@ -560,12 +702,14 @@ def upgrade_play(request):
 
     player = current_player(request)
     if player:
-        player.opens.filter(pk=from_uid).update(sold=True)
+        player.opens.filter(pk=from_uid).update(
+            sold=True, disposition=OpenRecord.DISP_UPGRADED)
         if won:
             OpenRecord.objects.create(
                 player=player, case=to.case, case_name=to.case.name if to.case else "",
                 skin_name=to.name, skin_image=to.image, skin_price=to.price,
-                rarity=to.rarity, color=to.color, wear=to.wear, sold=False)
+                rarity=to.rarity, color=to.color, wear=to.wear, sold=False,
+                source=OpenRecord.SRC_UPGRADE)
     else:
         inv = [r for r in request.session.get("inv", []) if r["id"] != from_uid]
         if won:
@@ -845,12 +989,14 @@ def kontrakt_play(request):
 
     player = current_player(request)
     if player:
-        player.opens.filter(pk__in=picked).update(sold=True)
+        player.opens.filter(pk__in=picked).update(
+            sold=True, disposition=OpenRecord.DISP_CONTRACT)
         OpenRecord.objects.create(
             player=player, case=out.case,
             case_name=out.case.name if out.case else "",
             skin_name=out.name, skin_image=out.image, skin_price=out.price,
-            rarity=out.rarity, color=out.color, wear=out.wear, sold=False)
+            rarity=out.rarity, color=out.color, wear=out.wear, sold=False,
+            source=OpenRecord.SRC_CONTRACT)
     else:
         drop = set(picked)
         inv = [r for r in request.session.get("inv", []) if r["id"] not in drop]
@@ -1082,7 +1228,8 @@ def skin_buy(request):
         OpenRecord.objects.create(
             player=player, case=item.case, case_name=item.case.name if item.case else "",
             skin_name=item.name, skin_image=item.image, skin_price=item.price,
-            rarity=item.rarity, color=item.color, wear=item.wear, sold=False)
+            rarity=item.rarity, color=item.color, wear=item.wear, sold=False,
+            source=OpenRecord.SRC_SHOP)
     else:
         inv = request.session.get("inv", [])
         uid = request.session.get("inv_uid", 0) + 1

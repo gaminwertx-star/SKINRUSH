@@ -217,7 +217,8 @@ def sell(request):
         if not rec:
             return Response({"error": "Topilmadi"}, status=400)
         rec.sold = True
-        rec.save(update_fields=["sold"])
+        rec.disposition = OpenRecord.DISP_SOLD
+        rec.save(update_fields=["sold", "disposition"])
         balance, total_won = _credit(request, player, rec.skin_price)
         return Response({"sold": rec.skin_price, "name": rec.skin_name,
                          "balance": balance, "total_won": total_won})
@@ -259,6 +260,7 @@ def claim(request):
             player=player, case=case, case_name=pw["case_name"],
             skin_name=pw["name"], skin_image=pw["image"], skin_price=pw["price"],
             rarity=pw["rarity"], color=pw["color"], wear=pw["wear"], sold=False,
+            source=OpenRecord.SRC_CASE,
         )
         count = player.opens.filter(sold=False).count()
         return Response({"ok": True, "record_id": rec.id, "count": count})
@@ -377,7 +379,8 @@ def _resolve_battle(battle):
                     case_name=(case.name if case else ""),
                     skin_name=it.get("name", ""), skin_image=it.get("img", ""),
                     skin_price=it.get("price", 0), rarity=it.get("tier_label", ""),
-                    color=it.get("color", ""), wear=it.get("wear", ""), sold=False)
+                    color=it.get("color", ""), wear=it.get("wear", ""), sold=False,
+                    source=OpenRecord.SRC_BATTLE)
 
 
 def _battle_card(b):
@@ -609,12 +612,15 @@ def upgrade_play(request):
 
     player = current_player(request)
     if player:
-        player.opens.filter(pk=from_uid).update(sold=True)   # consume the source skin
+        # consume the source skin
+        player.opens.filter(pk=from_uid).update(
+            sold=True, disposition=OpenRecord.DISP_UPGRADED)
         if won:
             OpenRecord.objects.create(
                 player=player, case=to.case, case_name=to.case.name if to.case else "",
                 skin_name=to.name, skin_image=to.image, skin_price=to.price,
-                rarity=to.rarity, color=to.color, wear=to.wear, sold=False)
+                rarity=to.rarity, color=to.color, wear=to.wear, sold=False,
+                source=OpenRecord.SRC_UPGRADE)
     else:
         inv = [r for r in request.session.get("inv", []) if r["id"] != from_uid]
         if won:

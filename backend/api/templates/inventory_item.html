@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}{{ it.name }} — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="ivd">
+  <a class="ivd-back" href="{% url 'inventory' %}">‹ {{ S.nav_inventar }}</a>
+
+  <!-- hero -->
+  <div class="ivd-hero" style="--rc:{{ it.color }}">
+    {% if it.tier_label %}<div class="ivd-hero__rarity">{{ it.tier_label }}</div>{% endif %}
+    <div class="ivd-hero__art"><img src="{{ it.img|img }}" alt="{{ it.name }}" /></div>
+    <h1 class="ivd-hero__name">{{ it.finish }}</h1>
+    <div class="ivd-hero__rows">
+      <div class="ivd-hero__col">
+        <div class="ivd-k">QUROL</div>
+        <div class="ivd-v">{{ it.weapon }}</div>
+      </div>
+      <div class="ivd-hero__col ivd-hero__col--right">
+        <div class="ivd-k">HOLATI</div>
+        <div class="ivd-v">{{ it.wear|default:"—" }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- sell -->
+  {% if it.sellable %}
+    <form method="post" action="{% url 'sell' %}">{% csrf_token %}
+      <input type="hidden" name="record_id" value="{{ it.id }}" />
+      <button class="ivd-sell" type="submit">
+        <span class="ivd-sell__ico">🪙</span> Sotish · {{ it.price|fmt }}
+        <img class="coin-img" src="/images/coin.png" alt="" />
+      </button>
+    </form>
+  {% else %}
+    <div class="ivd-sell is-off">
+      <span class="ivd-sell__ico">🪙</span> Sotish · {{ it.price|fmt }}
+      <img class="coin-img" src="/images/coin.png" alt="" />
+    </div>
+  {% endif %}
+
+  <!-- actions -->
+  <div class="ivd-acts">
+    {% if it.sellable %}
+      <a class="ivd-act ivd-act--out" href="{% url 'withdraw' %}?id={{ it.id }}">
+        <span class="ivd-act__ico">◈</span> Chiqarish
+      </a>
+      <a class="ivd-act ivd-act--up" href="{% url 'upgrade' %}?from={{ it.id }}">
+        <span class="ivd-act__ico">↑</span> Yangilash
+      </a>
+    {% else %}
+      <span class="ivd-act is-off"><span class="ivd-act__ico">◈</span> Chiqarish</span>
+      <span class="ivd-act is-off"><span class="ivd-act__ico">↑</span> Yangilash</span>
+    {% endif %}
+  </div>
+
+  <!-- owner -->
+  <div class="ivd-owner">
+    <span class="ivd-owner__pic">
+      {% if owner.photo_url %}
+        <img src="{{ owner.photo_url }}" alt="" />
+      {% else %}
+        <span class="ivd-owner__ini">{{ owner.display_name|slice:":1"|upper }}</span>
+      {% endif %}
+    </span>
+    <span class="ivd-owner__body">
+      <span class="ivd-k">EGASI</span>
+      <span class="ivd-owner__name">{{ owner.display_name }}</span>
+    </span>
+    <span class="ivd-owner__go">›</span>
+  </div>
+
+  <!-- facts -->
+  <div class="ivd-facts">
+    {% if source_link %}
+      <a class="ivd-fact" href="{{ source_link }}">
+        <span class="ivd-fact__ico">✖</span>
+        <span class="ivd-fact__k">Manba</span>
+        <span class="ivd-fact__v">{{ source_label }}</span>
+        <span class="ivd-fact__go">›</span>
+      </a>
+    {% else %}
+      <div class="ivd-fact">
+        <span class="ivd-fact__ico">✖</span>
+        <span class="ivd-fact__k">Manba</span>
+        <span class="ivd-fact__v">{{ source_label }}</span>
+      </div>
+    {% endif %}
+
+    <div class="ivd-fact">
+      <span class="ivd-fact__ico">◷</span>
+      <span class="ivd-fact__k">Olingan</span>
+      <span class="ivd-fact__v">{{ rec.created_at|date:"d.m.Y" }}</span>
+    </div>
+
+    <div class="ivd-fact">
+      <span class="ivd-fact__ico">◎</span>
+      <span class="ivd-fact__k">Steamdagi narx</span>
+      <span class="ivd-fact__v">{% if it.usd %}${{ it.usd }}{% else %}—{% endif %}</span>
+    </div>
+
+    <div class="ivd-fact">
+      <span class="ivd-fact__ico">🏷</span>
+      <span class="ivd-fact__k">Holati</span>
+      <span class="ivd-fact__v ivd-fact__v--{{ it.state }}">{{ it.state_label }}</span>
+    </div>
+
+    {% if it.case_name %}
+      <div class="ivd-fact">
+        <span class="ivd-fact__ico">▣</span>
+        <span class="ivd-fact__k">Keys</span>
+        <span class="ivd-fact__v">{{ it.case_name }}</span>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if withdraw and withdraw.status == 'rejected' %}
+    <div class="ivd-note ivd-note--bad">
+      So'rov rad etilgan. Sabab: {{ withdraw.reject_reason }}
+    </div>
+  {% elif withdraw and it.state == 'withdrawing' %}
+    <div class="ivd-note">
+      Chiqarish so'rovingiz ko'rib chiqilmoqda — skin band qilingan.
+    </div>
+  {% endif %}
+</section>
+
+{% endblock %}
