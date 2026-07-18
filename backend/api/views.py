@@ -6,7 +6,7 @@ price. The draw is weighted by those real chances on the server.
 import random
 from datetime import timedelta
 
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action, api_view
@@ -191,11 +191,14 @@ def set_lang(request):
 
 
 def _credit(request, player, amount):
-    """Add coins to the balance (real player or guest session) and return it."""
+    """Add coins to the balance (real player or guest session) and return it.
+
+    Uses an atomic F() update so two concurrent credits can never lose one
+    another's increment (a read-modify-write would)."""
     if player:
-        player.balance += amount
-        player.total_won += amount
-        player.save(update_fields=["balance", "total_won", "last_seen"])
+        Player.objects.filter(pk=player.pk).update(
+            balance=F("balance") + amount, total_won=F("total_won") + amount)
+        player.refresh_from_db(fields=["balance", "total_won"])
         return player.balance, player.total_won
     state = get_state(request)
     state["balance"] += amount
@@ -213,12 +216,12 @@ def sell(request):
 
     # 1) Selling an item already in the inventory.
     if rec_id and player:
-        rec = player.opens.filter(pk=rec_id, sold=False, is_locked=False).first()
-        if not rec:
+        rec = player.opens.filter(pk=rec_id).first()
+        # Atomic claim so a double-submit can't credit the same skin twice.
+        claimed = player.opens.filter(pk=rec_id, sold=False, is_locked=False).update(
+            sold=True, disposition=OpenRecord.DISP_SOLD)
+        if not rec or not claimed:
             return Response({"error": "Topilmadi"}, status=400)
-        rec.sold = True
-        rec.disposition = OpenRecord.DISP_SOLD
-        rec.save(update_fields=["sold", "disposition"])
         balance, total_won = _credit(request, player, rec.skin_price)
         return Response({"sold": rec.skin_price, "name": rec.skin_name,
                          "balance": balance, "total_won": total_won})

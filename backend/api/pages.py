@@ -41,13 +41,16 @@ from .views import (
 
 # ---------------------------------------------------------------- helpers
 def _charge(request, player, amount):
-    """Deduct `amount` from the real balance (player or guest). Returns (ok, balance)."""
+    """Deduct `amount` from the real balance (player or guest). Returns (ok, balance).
+
+    The debit is a single conditional UPDATE (``balance >= amount``), so it is
+    atomic: two concurrent charges can never both pass the funds check and
+    overdraw the account."""
     if player:
-        if player.balance < amount:
-            return False, player.balance
-        player.balance -= amount
-        player.save(update_fields=["balance", "last_seen"])
-        return True, player.balance
+        charged = Player.objects.filter(pk=player.pk, balance__gte=amount).update(
+            balance=F("balance") - amount)
+        player.refresh_from_db(fields=["balance"])
+        return bool(charged), player.balance
     st = get_state(request)
     if st["balance"] < amount:
         return False, st["balance"]
@@ -369,12 +372,13 @@ def sell(request):
     rec_id = _int(request.POST.get("record_id"))
 
     if rec_id and player:
-        # is_locked → promised to a withdraw request, not the player's to sell.
-        rec = player.opens.filter(pk=rec_id, sold=False, is_locked=False).first()
-        if rec:
-            rec.sold = True
-            rec.disposition = OpenRecord.DISP_SOLD
-            rec.save(update_fields=["sold", "disposition"])
+        rec = player.opens.filter(pk=rec_id).first()
+        # Atomic claim: only the request that actually flips sold=False→True (and
+        # the skin isn't is_locked, i.e. promised to a withdraw) credits, so two
+        # concurrent sells of one skin can't both pay out.
+        claimed = player.opens.filter(pk=rec_id, sold=False, is_locked=False).update(
+            sold=True, disposition=OpenRecord.DISP_SOLD)
+        if rec and claimed:
             _credit(request, player, rec.skin_price)
             messages.success(request, f"Sotildi: {rec.skin_name} · +{rec.skin_price}")
         return redirect("inventory")
@@ -550,13 +554,17 @@ def sell_all(request):
     Skips anything held by a withdraw request — those are promised to Steam."""
     player = current_player(request)
     if player:
-        recs = list(player.opens.filter(sold=False, is_locked=False))
-        if not recs:
-            messages.error(request, "Sotish uchun buyumlar yo'q")
-            return redirect("inventory")
-        total = sum(r.skin_price for r in recs)
-        player.opens.filter(pk__in=[r.pk for r in recs]).update(
-            sold=True, disposition=OpenRecord.DISP_SOLD)
+        # Lock the rows for the duration so a concurrent sell can't also claim
+        # one of them; then the total we credit matches exactly what we flipped.
+        with transaction.atomic():
+            recs = list(player.opens.select_for_update()
+                        .filter(sold=False, is_locked=False))
+            if not recs:
+                messages.error(request, "Sotish uchun buyumlar yo'q")
+                return redirect("inventory")
+            total = sum(r.skin_price for r in recs)
+            player.opens.filter(pk__in=[r.pk for r in recs]).update(
+                sold=True, disposition=OpenRecord.DISP_SOLD)
         _credit(request, player, total)
         messages.success(request, f"{len(recs)} ta skin sotildi · +{total:,}".replace(",", " "))
         return redirect("inventory")
