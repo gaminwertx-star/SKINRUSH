@@ -3,51 +3,70 @@
 {% block title %}Jang yaratish — SKINRUSH{% endblock %}
 {% block content %}
 
-<form class="btc" method="post" action="{% url 'battle-create' %}"
+<form class="btc2" method="post" action="{% url 'battle-create' %}"
       data-balance="{{ ME.balance }}" data-auth="{{ is_auth|yesno:'1,0' }}">
   {% csrf_token %}
 
-  <aside class="btc-panel">
-    <div class="btc-panel__label">O'yinchilar soni</div>
+  <div class="btc2-block">
+    <div class="btc2-label">O'yinchilar soni</div>
     <div class="btc-players">
       <label class="btc-players__opt"><input type="radio" name="players" value="2" checked><span>2</span></label>
       <label class="btc-players__opt"><input type="radio" name="players" value="3"><span>3</span></label>
       <label class="btc-players__opt"><input type="radio" name="players" value="4"><span>4</span></label>
     </div>
+  </div>
 
-    <div class="btc-cost">
-      <div class="btc-cost__row">
-        <span>Jami narx</span>
-        <b class="btc-cost__val" data-total>0 <img class="coin-img" src="/images/coin.png" alt="" /></b>
-      </div>
-      <div class="btc-cost__sub">har bir o'yinchi uchun</div>
-    </div>
-
-    <div class="btc-warn" data-warn hidden>Mablag' yetarli emas</div>
-
-    <button class="btc-submit" type="submit" data-submit disabled>
-      Jang yaratish <span data-submit-total></span>
+  <div class="btc2-selhead">
+    <div class="btc2-label btc2-label--lg">Tanlangan keyslar <span class="btc2-count" data-count>0</span>/8</div>
+    <button type="button" class="btc2-add" data-open>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      Qo'shish
     </button>
-    <div class="btc-selected-store" data-store></div>
-  </aside>
+  </div>
 
-  <div class="btc-main">
-    <h2 class="btc-h">Tanlangan keyslar (<span data-count>0</span>/8)</h2>
-    <div class="btc-chosen" data-chosen>
-      <p class="btc-chosen__empty" data-empty>Kamida bitta keys tanlang</p>
+  <div class="btc2-chosen" data-chosen>
+    <p class="btc2-empty" data-empty>Keys tanlash uchun «Qo'shish» tugmasini bosing</p>
+  </div>
+
+  <div class="btc2-store" data-store></div>
+
+  <div class="btc2-submitbar">
+    <button class="btc2-submit" type="submit" data-submit disabled>
+      Jang yaratish<span data-submit-total></span>
+    </button>
+  </div>
+
+  <!-- ---------- key-picker modal ---------- -->
+  <div class="btcm" data-modal hidden>
+    <div class="btcm__head">
+      <button type="button" class="btcm__x" data-close aria-label="Yopish">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <div class="btcm__titlebox">
+        <div class="btcm__title">Keyslarni tanlang · <span data-mcount>0</span>/8</div>
+        <div class="btcm__total"><span data-mtotal>0</span> <img class="coin-img" src="/images/coin.png" alt="" /></div>
+      </div>
+      <button type="button" class="btcm__ok" data-confirm aria-label="Tayyor">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-11"/></svg>
+      </button>
     </div>
-    <div class="btc-max" data-max hidden>Maksimal 8 raund</div>
-
-    <h2 class="btc-h">Keyslarni tanlang</h2>
-    <div class="btc-grid">
+    <div class="btcm__grid">
       {% for c in cases %}
-        <button type="button" class="btc-key" data-add
-                data-id="{{ c.id }}" data-name="{{ c.name }}" data-price="{{ c.price }}"
-                data-img="{{ c.image|img }}">
-          <img class="btc-key__img" src="{{ c.image|img }}" alt="{{ c.name }}" loading="lazy" />
-          <span class="btc-key__name">{{ c.name }}</span>
-          <span class="btc-key__price">{{ c.price|fmt }} <img class="coin-img" src="/images/coin.png" alt="" /></span>
-        </button>
+        <div class="btcm-card" data-mcard data-id="{{ c.id }}" data-name="{{ c.name }}" data-price="{{ c.price }}" data-img="{{ c.image|img }}">
+          <div class="btcm-card__art">
+            <img class="btcm-card__img" src="{{ c.image|img }}" alt="{{ c.name }}" loading="lazy" />
+            <span class="btcm-card__name">{{ c.name }}</span>
+          </div>
+          <div class="btcm-card__bar">
+            <button type="button" class="btcm-step" data-minus aria-label="−">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M5 12h14"/></svg>
+            </button>
+            <span class="btcm-card__val" data-val><span class="btcm-price">{{ c.price|fmt }} <img class="coin-img" src="/images/coin.png" alt="" /></span></span>
+            <button type="button" class="btcm-step btcm-step--plus" data-plus aria-label="+">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+          </div>
+        </div>
       {% endfor %}
     </div>
   </div>
@@ -58,73 +77,104 @@
 {% block scripts %}
 <script>
 (function () {
-  var form = document.querySelector('.btc');
+  var form = document.querySelector('.btc2');
   if (!form) return;
   var MAX = 8;
   var balance = parseInt(form.dataset.balance || '0', 10);
   var isAuth = form.dataset.auth === '1';
+  var coin = '<img class="coin-img" src="/images/coin.png" alt="" />';
+  function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+
   var chosen = form.querySelector('[data-chosen]');
   var emptyMsg = form.querySelector('[data-empty]');
   var store = form.querySelector('[data-store]');
   var countEl = form.querySelector('[data-count]');
-  var totalEl = form.querySelector('[data-total]');
   var subTotal = form.querySelector('[data-submit-total]');
-  var warn = form.querySelector('[data-warn]');
-  var maxMsg = form.querySelector('[data-max]');
   var submit = form.querySelector('[data-submit]');
-  var coin = '<img class="coin-img" src="/images/coin.png" alt="" />';
-  var sel = [];  // {id, name, price, img}
+  var modal = form.querySelector('[data-modal]');
+  var mcountEl = form.querySelector('[data-mcount]');
+  var mtotalEl = form.querySelector('[data-mtotal]');
+  var cards = form.querySelectorAll('[data-mcard]');
 
-  function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+  var items = {};   // id -> { qty, name, price, img }
 
-  function render() {
-    // chosen tiles
-    chosen.querySelectorAll('.btc-chosen__tile').forEach(function (n) { n.remove(); });
-    sel.forEach(function (c, i) {
-      var t = document.createElement('div');
-      t.className = 'btc-chosen__tile';
-      t.innerHTML =
-        '<button type="button" class="btc-chosen__x" data-rm="' + i + '" aria-label="remove">&times;</button>' +
-        '<img src="' + c.img + '" alt="" />' +
-        '<span class="btc-chosen__name">' + c.name + '</span>' +
-        '<span class="btc-chosen__price">' + fmt(c.price) + ' ' + coin + '</span>';
-      chosen.appendChild(t);
-    });
-    emptyMsg.style.display = sel.length ? 'none' : '';
+  function totalQty() { var q = 0; for (var k in items) q += items[k].qty; return q; }
+  function totalCost() { var s = 0; for (var k in items) s += items[k].qty * items[k].price; return s; }
 
-    // hidden inputs
-    store.innerHTML = '';
-    sel.forEach(function (c) {
-      var inp = document.createElement('input');
-      inp.type = 'hidden'; inp.name = 'case_ids'; inp.value = c.id;
-      store.appendChild(inp);
-    });
+  function paintCard(card) {
+    var id = card.dataset.id, it = items[id], qty = it ? it.qty : 0;
+    var val = card.querySelector('[data-val]');
+    card.classList.toggle('is-picked', qty > 0);
+    if (qty > 0) val.innerHTML = '<span class="btcm-x">×' + qty + '</span>';
+    else val.innerHTML = '<span class="btcm-price">' + fmt(parseInt(card.dataset.price, 10)) + ' ' + coin + '</span>';
+  }
+  function paintModalHead() { mcountEl.textContent = totalQty(); mtotalEl.textContent = fmt(totalCost()); }
 
-    var total = sel.reduce(function (s, c) { return s + c.price; }, 0);
-    countEl.textContent = sel.length;
-    totalEl.innerHTML = fmt(total) + ' ' + coin;
-    subTotal.innerHTML = total ? '· ' + fmt(total) + ' ' + coin : '';
-    maxMsg.hidden = sel.length < MAX;
-
-    var poor = isAuth && total > balance;
-    warn.hidden = !(poor && total > 0);
-    submit.disabled = sel.length === 0 || poor;
+  function add(card) {
+    if (totalQty() >= MAX) return;
+    var id = card.dataset.id;
+    if (!items[id]) items[id] = { qty: 0, name: card.dataset.name, price: parseInt(card.dataset.price, 10), img: card.dataset.img };
+    items[id].qty++; paintCard(card); paintModalHead();
+  }
+  function sub(card) {
+    var id = card.dataset.id; if (!items[id]) return;
+    items[id].qty--; if (items[id].qty <= 0) delete items[id];
+    paintCard(card); paintModalHead();
   }
 
-  form.querySelectorAll('[data-add]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      if (sel.length >= MAX) return;
-      sel.push({ id: btn.dataset.id, name: btn.dataset.name,
-                 price: parseInt(btn.dataset.price, 10), img: btn.dataset.img });
-      render();
-    });
+  cards.forEach(function (card) {
+    card.querySelector('[data-plus]').addEventListener('click', function () { add(card); });
+    card.querySelector('[data-minus]').addEventListener('click', function () { sub(card); });
   });
 
+  function openModal() { modal.hidden = false; document.body.classList.add('btcm-open'); }
+  function closeModal() { modal.hidden = true; document.body.classList.remove('btcm-open'); }
+  form.querySelector('[data-open]').addEventListener('click', openModal);
+  form.querySelector('[data-close]').addEventListener('click', closeModal);
+  form.querySelector('[data-confirm]').addEventListener('click', function () { closeModal(); render(); });
+
+  function render() {
+    chosen.querySelectorAll('.btc2-tile').forEach(function (n) { n.remove(); });
+    var ids = Object.keys(items);
+    emptyMsg.style.display = ids.length ? 'none' : '';
+    ids.forEach(function (id) {
+      var it = items[id];
+      var t = document.createElement('div');
+      t.className = 'btc2-tile';
+      t.innerHTML =
+        '<button type="button" class="btc2-tile__x" data-rm="' + id + '" aria-label="remove">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>' +
+        '</button>' +
+        '<img class="btc2-tile__img" src="' + it.img + '" alt="" />' +
+        (it.qty > 1 ? '<span class="btc2-tile__qty">×' + it.qty + '</span>' : '') +
+        '<span class="btc2-tile__name">' + it.name + '</span>' +
+        '<span class="btc2-tile__price">' + fmt(it.price * it.qty) + ' ' + coin + '</span>';
+      chosen.appendChild(t);
+    });
+
+    store.innerHTML = '';
+    ids.forEach(function (id) {
+      for (var i = 0; i < items[id].qty; i++) {
+        var inp = document.createElement('input');
+        inp.type = 'hidden'; inp.name = 'case_ids'; inp.value = id;
+        store.appendChild(inp);
+      }
+    });
+
+    var tq = totalQty(), tc = totalCost();
+    countEl.textContent = tq;
+    subTotal.innerHTML = tc ? ' · ' + fmt(tc) + ' ' + coin : '';
+    var poor = isAuth && tc > balance;
+    submit.disabled = tq === 0 || poor;
+    submit.classList.toggle('is-poor', !!(poor && tq > 0));
+  }
+
   chosen.addEventListener('click', function (e) {
-    var x = e.target.closest('[data-rm]');
-    if (!x) return;
-    sel.splice(parseInt(x.dataset.rm, 10), 1);
-    render();
+    var x = e.target.closest('[data-rm]'); if (!x) return;
+    var id = x.dataset.rm; delete items[id];
+    var card = form.querySelector('[data-mcard][data-id="' + id + '"]');
+    if (card) paintCard(card);
+    paintModalHead(); render();
   });
 
   render();

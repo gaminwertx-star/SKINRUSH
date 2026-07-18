@@ -28,13 +28,13 @@
     <form method="post" action="{% url 'sell' %}">{% csrf_token %}
       <input type="hidden" name="record_id" value="{{ it.id }}" />
       <button class="ivd-sell" type="submit">
-        <span class="ivd-sell__ico">🪙</span> Sotish · {{ it.price|fmt }}
+        {% icon "coins" %} Sotish · {{ it.price|fmt }}
         <img class="coin-img" src="/images/coin.png" alt="" />
       </button>
     </form>
   {% else %}
     <div class="ivd-sell is-off">
-      <span class="ivd-sell__ico">🪙</span> Sotish · {{ it.price|fmt }}
+      {% icon "coins" %} Sotish · {{ it.price|fmt }}
       <img class="coin-img" src="/images/coin.png" alt="" />
     </div>
   {% endif %}
@@ -43,14 +43,14 @@
   <div class="ivd-acts">
     {% if it.sellable %}
       <a class="ivd-act ivd-act--out" href="{% url 'withdraw' %}?id={{ it.id }}">
-        <span class="ivd-act__ico">◈</span> Chiqarish
+        {% icon "upload" %} Chiqarish
       </a>
       <a class="ivd-act ivd-act--up" href="{% url 'upgrade' %}?from={{ it.id }}">
-        <span class="ivd-act__ico">↑</span> Yangilash
+        {% icon "arrow-up" %} Yangilash
       </a>
     {% else %}
-      <span class="ivd-act is-off"><span class="ivd-act__ico">◈</span> Chiqarish</span>
-      <span class="ivd-act is-off"><span class="ivd-act__ico">↑</span> Yangilash</span>
+      <span class="ivd-act is-off">{% icon "upload" %} Chiqarish</span>
+      <span class="ivd-act is-off">{% icon "arrow-up" %} Yangilash</span>
     {% endif %}
   </div>
 
@@ -67,47 +67,47 @@
       <span class="ivd-k">EGASI</span>
       <span class="ivd-owner__name">{{ owner.display_name }}</span>
     </span>
-    <span class="ivd-owner__go">›</span>
+    <span class="ivd-owner__go">{% icon "chevron-right" %}</span>
   </div>
 
   <!-- facts -->
   <div class="ivd-facts">
     {% if source_link %}
       <a class="ivd-fact" href="{{ source_link }}">
-        <span class="ivd-fact__ico">✖</span>
+        <span class="ivd-fact__ico">{% icon "swords" %}</span>
         <span class="ivd-fact__k">Manba</span>
         <span class="ivd-fact__v">{{ source_label }}</span>
-        <span class="ivd-fact__go">›</span>
+        <span class="ivd-fact__go">{% icon "chevron-right" %}</span>
       </a>
     {% else %}
       <div class="ivd-fact">
-        <span class="ivd-fact__ico">✖</span>
+        <span class="ivd-fact__ico">{% icon "swords" %}</span>
         <span class="ivd-fact__k">Manba</span>
         <span class="ivd-fact__v">{{ source_label }}</span>
       </div>
     {% endif %}
 
     <div class="ivd-fact">
-      <span class="ivd-fact__ico">◷</span>
+      <span class="ivd-fact__ico">{% icon "clock" %}</span>
       <span class="ivd-fact__k">Olingan</span>
       <span class="ivd-fact__v">{{ rec.created_at|date:"d.m.Y" }}</span>
     </div>
 
     <div class="ivd-fact">
-      <span class="ivd-fact__ico">◎</span>
+      <span class="ivd-fact__ico">{% icon "dollar" %}</span>
       <span class="ivd-fact__k">Steamdagi narx</span>
       <span class="ivd-fact__v">{% if it.usd %}${{ it.usd }}{% else %}—{% endif %}</span>
     </div>
 
     <div class="ivd-fact">
-      <span class="ivd-fact__ico">🏷</span>
+      <span class="ivd-fact__ico">{% icon "tag" %}</span>
       <span class="ivd-fact__k">Holati</span>
       <span class="ivd-fact__v ivd-fact__v--{{ it.state }}">{{ it.state_label }}</span>
     </div>
 
     {% if it.case_name %}
       <div class="ivd-fact">
-        <span class="ivd-fact__ico">▣</span>
+        <span class="ivd-fact__ico">{% icon "box" %}</span>
         <span class="ivd-fact__k">Keys</span>
         <span class="ivd-fact__v">{{ it.case_name }}</span>
       </div>

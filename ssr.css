@@ -52,18 +52,37 @@ summary::-webkit-details-marker { display: none; }
 
 /* ---------- flash / toast ---------- */
 .ss-flash {
-  position: fixed; left: 50%; transform: translateX(-50%); bottom: 90px; z-index: 200;
-  display: flex; flex-direction: column; gap: 8px; width: min(92%, 420px);
+  position: fixed; left: 50%; transform: translateX(-50%);
+  top: calc(12px + env(safe-area-inset-top)); z-index: 500;
+  display: flex; flex-direction: column; gap: 8px;
+  width: min(92%, 440px); pointer-events: none;
 }
 .ss-flash__item {
-  background: #12151f; border: 1px solid var(--line); border-left: 4px solid var(--violet);
-  border-radius: 12px; padding: 12px 16px; font-weight: 700; font-size: 14px;
-  box-shadow: 0 14px 34px rgba(0,0,0,.5); animation: ss-pop .3s ease;
+  pointer-events: auto; color: #fff; font-weight: 700; font-size: 14px;
+  border-radius: 12px; padding: 13px 18px; text-align: center;
+  box-shadow: 0 14px 34px rgba(0,0,0,.45);
+  /* in from the top, hold, then out again — total 1.8s, visible ~1.5s */
+  animation: ss-toast-in .28s cubic-bezier(.2,.9,.3,1),
+             ss-toast-out .32s ease 1.5s forwards;
 }
-.ss-flash--success { border-left-color: var(--green); }
-.ss-flash--error { border-left-color: #ef4444; }
-.ss-flash--info { border-left-color: var(--teal); }
-@keyframes ss-pop { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.ss-flash--success { background: #16a34a; }
+.ss-flash--error   { background: #dc2626; }
+.ss-flash--info    { background: #2563eb; }
+/* Django's default tag for messages.info/plain is empty → treat as info */
+.ss-flash__item:not([class*="ss-flash--"]) { background: #2563eb; }
+
+@keyframes ss-toast-in {
+  from { opacity: 0; transform: translateY(-16px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes ss-toast-out {
+  to { opacity: 0; transform: translateY(-12px); }
+}
+/* respect reduced-motion: no slide, still auto-hides */
+@media (prefers-reduced-motion: reduce) {
+  .ss-flash__item { animation: ss-toast-fade 1.8s forwards; }
+  @keyframes ss-toast-fade { 0%,83% { opacity: 1; } 100% { opacity: 0; } }
+}
 
 /* ---------- TOP DROPS marquee ---------- */
 .ss-marquee { display: flex; gap: 12px; width: max-content; animation: ss-scroll 60s linear infinite; }
@@ -2063,3 +2082,16 @@ a.ivd-fact:hover { background: rgba(255,255,255,.03); }
 @media (max-width: 720px) {
   .pc { padding-bottom: 56px; }
 }
+
+/* ================= inline icons ({% icon %} tag) ================= */
+.ic {
+  width: 1em; height: 1em; flex: none; vertical-align: -0.14em;
+  display: inline-block;
+}
+.ic.big { width: 1.5em; height: 1.5em; }
+/* fact rows and owner chevrons want a fixed box, not text-relative sizing */
+.ivd-fact__ico .ic { width: 17px; height: 17px; vertical-align: middle; }
+.ivd-fact__go .ic, .ivd-owner__go .ic, .pc-case__go .ic { width: 18px; height: 18px; vertical-align: middle; }
+.iv-card__x .ic, .iv-modal__x .ic { width: 15px; height: 15px; vertical-align: middle; }
+.pc-ico .ic { width: 38px; height: 38px; }
+.ss-soon .ic { width: 40px; height: 40px; }

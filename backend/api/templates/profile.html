@@ -38,25 +38,6 @@
       </div>
     </div>
 
-    <!-- balance + actions -->
-    <div class="prof-side">
-      <div class="prof-bal">
-        <span class="prof-bal__lbl">{{ S.prof_balance }}</span>
-        <span class="prof-bal__val"><img class="coin-img" src="/images/coin.png" alt="" /> {{ P.balance|fmt }}</span>
-      </div>
-      <div class="prof-side__acts">
-        <a class="btn btn--gold btn--sm" href="{% url 'dokon' %}">{{ S.prof_topup }}</a>
-        <a class="btn btn--teal btn--sm" href="{% url 'home' %}">{{ S.prof_daily }}</a>
-        <a class="btn btn--outline btn--sm" href="{% url 'inventory' %}">{{ S.prof_go_inv }}</a>
-        {% if P.auth %}
-          <form method="post" action="{% url 'logout' %}" class="ss-inline">{% csrf_token %}
-            <button class="btn btn--outline btn--sm prof-logout">{{ S.prof_logout }}</button>
-          </form>
-        {% else %}
-          <a class="btn btn--login btn--sm" href="{% url 'login' %}">{{ S.prof_login_cta }}</a>
-        {% endif %}
-      </div>
-    </div>
   </div>
 
   {% if not P.auth %}

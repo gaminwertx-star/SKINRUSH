@@ -9,7 +9,7 @@
   </div>
 
   <div class="pc-panel">
-    <div class="pc-ico">🎁</div>
+    <div class="pc-ico">{% icon "gift" %}</div>
     <div class="pc-title">Promokodingiz bormi?</div>
     <p class="pc-sub">
       Kodni kiriting va bepul keysni oching. To'ldirish bonusi kodlari
@@ -35,9 +35,9 @@
           <span class="pc-case__art"><img src="{{ f.case.image|img }}" alt="" loading="lazy" /></span>
           <span class="pc-case__body">
             <span class="pc-case__name">{{ f.case.name }}</span>
-            <span class="pc-case__tag">🎁 Bepul ochish</span>
+            <span class="pc-case__tag">{% icon "gift" %} Bepul ochish</span>
           </span>
-          <span class="pc-case__go">›</span>
+          <span class="pc-case__go">{% icon "chevron-right" %}</span>
         </a>
       {% endfor %}
     </div>

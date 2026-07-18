@@ -25,7 +25,7 @@
           {% for it in inv %}{% if it.selected %}
             <a class="forge-chip forge-chip--rm" style="--rc:{{ it.skin.color }}" href="{{ it.toggle_qs }}" title="{{ it.skin.name }}">
               <img src="{{ it.skin.img|img }}" alt="" loading="lazy" />
-              <span class="forge-chip__rm" aria-hidden="true">✕</span>
+              <span class="forge-chip__rm" aria-hidden="true">{% icon "x" %}</span>
             </a>
           {% endif %}{% endfor %}
           {% if not picked %}<div class="forge-charge__empty">{{ pick_hint }}</div>{% endif %}
@@ -39,7 +39,7 @@
         <div class="forge-core is-done {% if result.won %}win{% else %}lose{% endif %}">
           <span class="forge-core__ring" aria-hidden="true"></span>
           <span class="forge-core__inner">
-            <span class="forge-core__mark">{% if result.won %}✓{% else %}✕{% endif %}</span>
+            <span class="forge-core__mark">{% if result.won %}{% icon "check" %}{% else %}{% icon "x" %}{% endif %}</span>
             <span class="forge-core__delta {% if result.profit >= 0 %}is-plus{% else %}is-minus{% endif %}">{% if result.profit >= 0 %}+{% endif %}{{ result.profit|fmt }}</span>
           </span>
         </div>
@@ -106,11 +106,11 @@
           <span class="armory-card__art"><img src="{{ it.skin.img|img }}" alt="" loading="lazy" /></span>
           <span class="armory-card__name">{{ it.skin.name }}</span>
           <span class="armory-card__val"><img class="coin-img" src="/images/coin.png" alt="" /> {{ it.value|fmt }}</span>
-          <span class="armory-card__check" aria-hidden="true">✓</span>
+          <span class="armory-card__check" aria-hidden="true">{% icon "check" %}</span>
         </a>
       {% empty %}
         <div class="ss-empty ss-empty--big">
-          <div class="ss-soon">📦</div>
+          <div class="ss-soon">{% icon "box" %}</div>
           <p>{{ S.con_empty }}</p>
           <a class="btn btn--teal" href="{% url 'home' %}#cases">{{ S.nav_keyslar }}</a>
         </div>

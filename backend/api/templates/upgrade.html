@@ -65,7 +65,7 @@
       {% endif %}
       <div class="upg-gauge__center">
         {% if result %}
-          <div class="upg-gauge__mark ss-after-spin {% if result.won %}ss-win{% else %}ss-lose{% endif %}">{% if result.won %}✓{% else %}✕{% endif %}</div>
+          <div class="upg-gauge__mark ss-after-spin {% if result.won %}ss-win{% else %}ss-lose{% endif %}">{% if result.won %}{% icon "check" %}{% else %}{% icon "x" %}{% endif %}</div>
           <div class="upg-gauge__sub">{{ result.pct }}%</div>
         {% elif target %}
           <div class="upg-gauge__pct">{{ target.pct }}<span class="upg-gauge__pctsign">%</span></div>

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css?v=54" />
-  <link rel="stylesheet" href="/ssr.css?v=40" />
+  <link rel="stylesheet" href="/ssr.css?v=41" />
   <link rel="stylesheet" href="/polish.css?v=11" />
 </head>
 <body>
@@ -110,9 +110,18 @@
   </nav>
 
   {% if messages %}
-    <div class="ss-flash">
+    <div class="ss-flash" id="ssFlash">
       {% for m in messages %}<div class="ss-flash__item ss-flash--{{ m.tags }}">{{ m }}</div>{% endfor %}
     </div>
+    <script>
+      // The CSS fades each toast out at 1.5s; drop it from the DOM once gone so
+      // it stops catching clicks and the container leaves no invisible strip.
+      (function () {
+        var box = document.getElementById('ssFlash');
+        if (!box) return;
+        setTimeout(function () { box.remove(); }, 2100);
+      })();
+    </script>
   {% endif %}
 
   <main class="container">

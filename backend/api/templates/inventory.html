@@ -25,7 +25,7 @@
            href="{% url 'inventory-item' it.id %}" title="{{ it.name }}">
           <div class="iv-card__top">
             <span class="iv-card__wear">{{ it.wear|wearabbr }}</span>
-            {% if it.state != 'owned' %}<span class="iv-card__x">✖</span>{% endif %}
+            {% if it.state != 'owned' %}<span class="iv-card__x">{% icon "x" %}</span>{% endif %}
           </div>
           <div class="iv-card__art"><img src="{{ it.img|img }}" alt="" loading="lazy" /></div>
           <div class="iv-card__weapon">{{ it.weapon }}</div>
@@ -54,7 +54,7 @@
   <div class="iv-modal__card" role="dialog" aria-modal="true" aria-labelledby="sellAllTitle">
     <div class="iv-modal__head">
       <div class="iv-modal__title" id="sellAllTitle">Sotishni tasdiqlash</div>
-      <button class="iv-modal__x" type="button" id="sellAllClose" aria-label="Yopish">✕</button>
+      <button class="iv-modal__x" type="button" id="sellAllClose" aria-label="Yopish">{% icon "x" %}</button>
     </div>
 
     {% if sell_all_count %}

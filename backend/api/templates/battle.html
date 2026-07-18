@@ -90,7 +90,7 @@
       <div class="bt-win" data-win>
         {% if is_participant %}
           <div class="bt-outcome {% if you_won %}is-win{% else %}is-lose{% endif %}">
-            {% if you_won %}🎉 Siz yutdingiz!{% else %}Siz yutqazdingiz{% endif %}
+            {% if you_won %}{% icon "trophy" %} Siz yutdingiz!{% else %}Siz yutqazdingiz{% endif %}
           </div>
         {% endif %}
         <div class="bt-win__hero">
@@ -137,12 +137,26 @@
   if (!arena) return;
   var status = arena.dataset.status;
 
-  // Waiting lobby: poll so a filling seat / the battle starting shows up.
-  if (status === 'waiting') {
-    setTimeout(function () { location.reload(); }, 5000);
+  // Waiting lobby: live.js polls and reloads only when a seat fills / the
+  // battle starts (smarter than the old blind 5s reload).
+  if (status === 'waiting') return;
+  if (status !== 'completed') return;
+
+  // The round-by-round reveal only plays the moment a battle resolves — the join
+  // redirect and live.js arrive with ?reveal=1. Opening an ALREADY-finished
+  // battle (Completed / My battles / a shared link) shows the final result
+  // instantly, with no replay (a finished game must not look like it's replaying).
+  var replay = /[?&]reveal=1(&|$)/.test(location.search);
+  if (replay) { try { history.replaceState({}, '', location.pathname); } catch (e) {} }
+  if (!replay) {
+    var _top = arena.querySelector('[data-top]');
+    var _reels = arena.querySelector('[data-reels]');
+    var _win = arena.querySelector('[data-win]');
+    if (_top) _top.style.display = 'none';
+    if (_reels) _reels.style.display = 'none';
+    if (_win) { _win.style.display = ''; _win.classList.add('bt-win--in'); }
     return;
   }
-  if (status !== 'completed') return;
 
   var dataEl = document.getElementById('bt-data');
   if (!dataEl) return;

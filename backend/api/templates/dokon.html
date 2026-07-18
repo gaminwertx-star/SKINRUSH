@@ -91,7 +91,7 @@
           </div>
         </div>
       {% empty %}
-        <div class="ss-empty ss-empty--big"><div class="ss-soon">🛒</div><p>{{ S.shop_none }}</p></div>
+        <div class="ss-empty ss-empty--big"><div class="ss-soon">{% icon "cart" %}</div><p>{{ S.shop_none }}</p></div>
       {% endfor %}
     {% else %}
       <div class="shop-results">{{ total }}{{ S.shop_results|cut:'{n}' }}</div>
@@ -107,7 +107,7 @@
         </div>
         {% endif %}
       {% else %}
-        <div class="ss-empty ss-empty--big"><div class="ss-soon">🔍</div><p>{{ S.shop_none }}</p>
+        <div class="ss-empty ss-empty--big"><div class="ss-soon">{% icon "search" %}</div><p>{{ S.shop_none }}</p>
           <a class="btn btn--teal" href="{% url 'dokon' %}">{{ S.shop_reset }}</a></div>
       {% endif %}
     {% endif %}
