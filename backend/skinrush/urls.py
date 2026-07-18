@@ -32,6 +32,9 @@ urlpatterns = [
     path("", pages.home, name="home"),
     path("kunlik/olish/", pages.daily_claim, name="daily-claim"),
 
+    path("drop/<int:pk>/", pages.drop_detail, name="drop"),
+    path("top-drops-feed/", pages.top_drops_feed, name="top-drops-feed"),
+
     path("keys/<slug:slug>/", pages.case_detail, name="case"),
     path("skin/", pages.skin_detail, name="skin"),
     path("skin/buy/", pages.skin_buy, name="skin-buy"),

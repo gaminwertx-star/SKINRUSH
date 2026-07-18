@@ -159,6 +159,36 @@ def daily_claim(request):
 
 
 # ---------------------------------------------------------------- cases
+def top_drops_feed(request):
+    """JSON the top strip polls to update itself without a page reload."""
+    from .context_processors import top_feed
+    return JsonResponse({"drops": top_feed()})
+
+
+def drop_detail(request, pk):
+    """One drop from the TOP DROPS feed: the skin, and who won it."""
+    drop = (Drop.objects.select_related("item", "case", "player")
+            .filter(pk=pk).first())
+    if drop is None:
+        return redirect("home")
+    it = drop.item
+    parts = it.name.split(" | ")
+    owner = drop.player
+    return render(request, "drop.html", {
+        "ACTIVE": "keyslar",
+        "drop": drop,
+        "skin": {
+            "name": it.name, "weapon": parts[0],
+            "finish": parts[1] if len(parts) > 1 else it.name,
+            "img": it.image, "price": it.price,
+            "rarity": it.rarity, "color": it.color or "#b0c3d9", "wear": it.wear,
+        },
+        "owner_name": owner.display_name if owner else "Anonim",
+        "owner_photo": owner.photo_url if owner else "",
+        "owner": owner,
+    })
+
+
 def case_detail(request, slug):
     case = get_object_or_404(Case, slug=slug)
     items = sorted(case.items.all(), key=lambda it: (it.chance, -it.price))
@@ -288,7 +318,7 @@ def case_open(request, slug):
     _bank_pending(request)
 
     winner = game.draw_item(items)
-    Drop.objects.create(case=case, item=winner)
+    Drop.objects.create(case=case, item=winner, player=player)
     Case.objects.filter(pk=case.pk).update(opens=case.opens + 1)
 
     request.session["pending_win"] = {

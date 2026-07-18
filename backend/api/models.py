@@ -73,10 +73,16 @@ class CaseItem(models.Model):
 
 
 class Drop(models.Model):
-    """A record of a skin won from a case — powers the TOP DROPS feed."""
+    """A skin won from a case — one row per opening, powering the TOP DROPS feed.
+
+    `player` is who opened it; null for a guest (they show as "Anonim"). It is
+    SET_NULL so deleting a player never erases the public feed.
+    """
 
     case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="drops")
     item = models.ForeignKey(CaseItem, on_delete=models.CASCADE, related_name="drops")
+    player = models.ForeignKey("Player", on_delete=models.SET_NULL, null=True,
+                               blank=True, related_name="drops")
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:

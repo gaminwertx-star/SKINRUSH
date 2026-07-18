@@ -113,7 +113,7 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
             balance = state["balance"]
 
         winner = game.draw_item(items)
-        Drop.objects.create(case=case, item=winner)
+        Drop.objects.create(case=case, item=winner, player=player)
         Case.objects.filter(pk=case.pk).update(opens=case.opens + 1)
 
         # Remember this drop so claim/ or sell/ can only act on a real opening.
