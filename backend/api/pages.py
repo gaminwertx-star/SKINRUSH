@@ -808,12 +808,6 @@ def _withdrawable(player, rec_id):
     return player.opens.filter(pk=rec_id, sold=False, is_locked=False).first()
 
 
-def _active_withdraw(player):
-    """The player's in-flight request, if any — one at a time (see OPEN_STATUSES)."""
-    return player.withdraws.filter(
-        status__in=WithdrawRequest.OPEN_STATUSES).select_related("record").first()
-
-
 def withdraw(request):
     """Withdraw a skin to Steam. Shows the skin card, asks for the trade URL the
     first time round, then hands over to `withdraw_create` to file the request."""
@@ -831,7 +825,8 @@ def withdraw(request):
         "ACTIVE": "inventar",
         "skin": _inv_row(rec),
         "trade_url": player.trade_url,
-        "active": _active_withdraw(player),
+        # No "one active request" gate — a player may withdraw several skins.
+        "active": None,
         # No URL saved yet, or the player asked to change the one on file.
         "editing": not player.trade_url or bool(request.GET.get("edit")),
     })
@@ -878,10 +873,8 @@ def withdraw_create(request):
         if not rec:
             messages.error(request, "Skin topilmadi yoki allaqachon band qilingan")
             return redirect("inventory")
-        if player.withdraws.filter(status__in=WithdrawRequest.OPEN_STATUSES).exists():
-            messages.error(request, "Sizda hozircha faol so'rov bor, iltimos kuting")
-            return redirect("inventory")
-
+        # No one-at-a-time limit: each request locks its own skin, so a player
+        # may have several in flight — one per skin.
         WithdrawRequest.objects.create(
             player=player, record=rec, case_name=rec.case_name,
             trade_url=player.trade_url)
