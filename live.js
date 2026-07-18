@@ -14,13 +14,15 @@
 (function () {
   "use strict";
 
-  // ---- top drops strip: live feed on every page ----
-  // The strip is a marquee whose list is duplicated for a seamless loop. When a
-  // newer drop appears we rebuild both halves, newest first, so fresh openings
-  // slide in without a reload. Polling pauses while the tab is hidden.
+  // ---- top drops strip: real live feed on every page ----
+  // Not a ticker — it does not auto-scroll. It sits on the newest real drops and
+  // only changes when a fresh opening arrives: the new skin is prepended at the
+  // front (see .drop--new) and the strip snaps back to the start so it is seen.
+  // When nobody is opening, nothing moves. Polling pauses while the tab hidden.
   (function liveStrip() {
     var track = document.getElementById("topTrack");
     if (!track) return;
+    var viewport = track.parentElement;
     var STRIP_POLL = 5000;
 
     function esc(s) {
@@ -29,12 +31,10 @@
       });
     }
 
-    // `fresh` marks a card that arrived on this poll, so it slides in at the
-    // front (see .drop--new) — the live "just dropped" feel.
-    function cardHTML(d, dim, fresh) {
+    // `fresh` marks a card that just arrived, so it slides in at the front.
+    function cardHTML(d, fresh) {
       return '<a class="drop drop-link' + (fresh ? " drop--new" : "") +
-        '" href="' + esc(d.href) + '" style="--rc:' + esc(d.color) + '"' +
-        (dim ? ' aria-hidden="true" tabindex="-1"' : "") + ">" +
+        '" href="' + esc(d.href) + '" style="--rc:' + esc(d.color) + '">' +
         '<img class="drop__img" src="' + esc(d.img) + '" alt="" loading="lazy" />' +
         '<div class="drop__name">' + esc(d.name) + "</div></a>";
     }
@@ -49,15 +49,13 @@
           var newest = String(drops[0].id);
           var prevTop = parseInt(track.getAttribute("data-top"), 10) || 0;
           if (String(newest) === String(prevTop)) return;  // nothing new
-          // Newest first; anything past the previous top is what just dropped,
-          // so it gets prepended at the front and animated in.
-          function render(dim) {
-            return drops.map(function (d) {
-              return cardHTML(d, dim, d.id > prevTop);
-            }).join("");
-          }
-          track.innerHTML = render(false) + render(true);  // both marquee halves
+          // Newest first; anything past the previous top just dropped and slides
+          // in at the front.
+          track.innerHTML = drops.map(function (d) {
+            return cardHTML(d, d.id > prevTop);
+          }).join("");
           track.setAttribute("data-top", newest);
+          if (viewport) viewport.scrollLeft = 0;  // show the new one at the front
         })
         .catch(function () {});
     }, STRIP_POLL);

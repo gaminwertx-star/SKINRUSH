@@ -7,9 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=54" />
-  <link rel="stylesheet" href="/ssr.css?v=44" />
-  <link rel="stylesheet" href="/polish.css?v=12" />
+  <link rel="stylesheet" href="/styles.css?v=55" />
+  <link rel="stylesheet" href="/ssr.css?v=45" />
+  <link rel="stylesheet" href="/polish.css?v=13" />
 </head>
 <body>
 
@@ -23,12 +23,6 @@
       <div class="live-strip__track" id="topTrack" data-top="{{ TOP_DROPS.0.id }}">
         {% for d in TOP_DROPS %}
           <a class="drop drop-link" href="{{ d.href }}" style="--rc:{{ d.color }}">
-            <img class="drop__img" src="{{ d.img }}" alt="" loading="lazy" />
-            <div class="drop__name">{{ d.name }}</div>
-          </a>
-        {% endfor %}
-        {% for d in TOP_DROPS %}
-          <a class="drop drop-link" href="{{ d.href }}" style="--rc:{{ d.color }}" aria-hidden="true" tabindex="-1">
             <img class="drop__img" src="{{ d.img }}" alt="" loading="lazy" />
             <div class="drop__name">{{ d.name }}</div>
           </a>
@@ -240,7 +234,7 @@
   </script>
 
   <script src="/sounds.js?v=3" defer></script>
-  <script src="/live.js?v=4" defer></script>
+  <script src="/live.js?v=5" defer></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

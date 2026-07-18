@@ -329,10 +329,9 @@ summary:focus-visible, .btn:focus-visible {
     animation-duration: .001ms !important; animation-iteration-count: 1 !important;
     transition-duration: .001ms !important; scroll-behavior: auto !important;
   }
-  /* ...except the TOP DROPS ticker. It is the site's live feed, not decoration;
-     killing it makes the strip look frozen the moment openings pause. A slow,
-     steady horizontal scroll is gentle enough to keep on. */
-  .live-strip__track {
-    animation-duration: 60s !important; animation-iteration-count: infinite !important;
+  /* ...except a freshly-dropped card's slide-in: it is a real event, brief, and
+     the whole point of the live feed. The strip itself no longer auto-scrolls. */
+  .drop--new {
+    animation-duration: .45s !important; animation-iteration-count: 1 !important;
   }
 }
