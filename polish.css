@@ -471,27 +471,3 @@ body::after {
   .section-title { letter-spacing: -.02em; }
 }
 
-/* the mobile bottom nav is ~64px; give every page comfortable clearance so
-   nothing (e.g. the reveal page's Olish/Sotish buttons) hides behind it */
-@media (max-width: 820px) {
-  body { padding-bottom: calc(92px + env(safe-area-inset-bottom)) !important; }
-  /* the reveal page ends in action buttons — keep them well clear */
-  .case-view .modal__actions { margin-bottom: 12px; }
-}
-
-/* ---------- mobile: the case-opening is a focused "you won X" moment, so the
-   bottom nav hid the Olish/Sotish buttons behind it. Give the result page the
-   whole screen — no bottom nav (back via the Orqaga button) — so the reveal and
-   its buttons are never overlapped, whatever the phone's height. ---------- */
-@media (max-width: 820px) {
-  /* .opening (the reel) exists only on the result page, so this scopes the
-     nav-hide to the opening screen and never the case detail page */
-  body:has(.opening) .mbar { display: none !important; }
-  body:has(.opening) { padding-bottom: 24px !important; }
-  /* keep the reel + card sensibly sized so it all sits close to the top */
-  .opening { height: 138px !important; margin: 4px 0 14px !important; }
-  .reveal-box { padding: 18px 16px 16px !important; margin: 8px auto 6px !important; }
-  .reveal__imgwrap { height: 120px !important; }
-  .reveal__img { max-height: 118px !important; }
-  .case-view .modal__actions { margin-top: 16px !important; margin-bottom: 20px !important; }
-}
