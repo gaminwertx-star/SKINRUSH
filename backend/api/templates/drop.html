@@ -3,54 +3,74 @@
 {% block title %}{{ skin.name }} — SKINRUSH{% endblock %}
 {% block content %}
 
-<section class="dr">
-  <a class="dr-back" href="{% url 'home' %}#cases">‹ {{ S.nav_keyslar }}</a>
+<section class="ivd">
+  <a class="ivd-back" href="{% url 'home' %}#cases">‹ {{ S.nav_keyslar }}</a>
 
-  <div class="dr-hero" style="--rc:{{ skin.color }}">
-    {% if skin.rarity %}<div class="dr-hero__rarity">{{ skin.rarity }}</div>{% endif %}
-    {% if skin.wear %}<div class="dr-hero__wear">{{ skin.wear|wearabbr }}</div>{% endif %}
-    <div class="dr-hero__art"><img src="{{ skin.img|img }}" alt="{{ skin.name }}" /></div>
-    <div class="dr-hero__weapon">{{ skin.weapon }}</div>
-    <div class="dr-hero__name">{{ skin.finish }}</div>
-    <div class="dr-hero__price">
-      <img class="coin-img" src="/images/coin.png" alt="" /> {{ skin.price|fmt }}
+  <!-- hero -->
+  <div class="ivd-hero" style="--rc:{{ skin.color }}">
+    {% if skin.rarity %}<div class="ivd-hero__rarity">{{ skin.rarity }}</div>{% endif %}
+    <div class="ivd-hero__art"><img src="{{ skin.img|img }}" alt="{{ skin.name }}" /></div>
+    <h1 class="ivd-hero__name">{{ skin.finish }}</h1>
+    <div class="ivd-hero__rows">
+      <div class="ivd-hero__col">
+        <div class="ivd-k">QUROL</div>
+        <div class="ivd-v">{{ skin.weapon }}</div>
+      </div>
+      <div class="ivd-hero__col ivd-hero__col--right">
+        <div class="ivd-k">HOLATI</div>
+        <div class="ivd-v">{{ skin.wear|default:"—" }}</div>
+      </div>
     </div>
   </div>
 
   <!-- owner -->
   {% if owner %}
-    <a class="dr-owner" href="{% url 'profile' %}">
+    <a class="ivd-owner" href="{% url 'profile' %}">
   {% else %}
-    <div class="dr-owner">
+    <div class="ivd-owner">
   {% endif %}
-    <span class="dr-owner__pic">
+    <span class="ivd-owner__pic">
       {% if owner_photo %}
         <img src="{{ owner_photo }}" alt="" />
       {% else %}
-        <span class="dr-owner__ini">{{ owner_name|slice:":1"|upper }}</span>
+        <span class="ivd-owner__ini">{{ owner_name|slice:":1"|upper }}</span>
       {% endif %}
     </span>
-    <span class="dr-owner__body">
-      <span class="dr-k">{% icon "user" %} EGASI</span>
-      <span class="dr-owner__name">{{ owner_name }}</span>
+    <span class="ivd-owner__body">
+      <span class="ivd-k">EGASI</span>
+      <span class="ivd-owner__name">{{ owner_name }}</span>
     </span>
+    {% if owner %}<span class="ivd-owner__go">{% icon "chevron-right" %}</span>{% endif %}
   {% if owner %}</a>{% else %}</div>{% endif %}
 
   <!-- facts -->
-  <div class="dr-facts">
-    <div class="dr-fact">
-      <span class="dr-fact__ico">{% icon "box" %}</span>
-      <span class="dr-fact__k">Keys</span>
-      {% if drop.case %}
-        <a class="dr-fact__v dr-fact__v--link" href="{% url 'case' drop.case.slug %}">{{ drop.case.name }}</a>
-      {% else %}
-        <span class="dr-fact__v">—</span>
-      {% endif %}
+  <div class="ivd-facts">
+    <div class="ivd-fact">
+      <span class="ivd-fact__ico">{% icon "coins" %}</span>
+      <span class="ivd-fact__k">Narx</span>
+      <span class="ivd-fact__v ivd-fact__v--coin">{{ skin.price|fmt }}
+        <img class="coin-img" src="/images/coin.png" alt="" /></span>
     </div>
-    <div class="dr-fact">
-      <span class="dr-fact__ico">{% icon "clock" %}</span>
-      <span class="dr-fact__k">Vaqt</span>
-      <span class="dr-fact__v">{{ drop.created_at|date:"d.m.Y H:i" }}</span>
+
+    {% if drop.case %}
+      <a class="ivd-fact" href="{% url 'case' drop.case.slug %}">
+        <span class="ivd-fact__ico">{% icon "box" %}</span>
+        <span class="ivd-fact__k">Manba</span>
+        <span class="ivd-fact__v">Keys «{{ drop.case.name }}»</span>
+        <span class="ivd-fact__go">{% icon "chevron-right" %}</span>
+      </a>
+    {% endif %}
+
+    <div class="ivd-fact">
+      <span class="ivd-fact__ico">{% icon "clock" %}</span>
+      <span class="ivd-fact__k">Olingan</span>
+      <span class="ivd-fact__v">{{ drop.created_at|date:"d.m.Y" }}</span>
+    </div>
+
+    <div class="ivd-fact">
+      <span class="ivd-fact__ico">{% icon "dollar" %}</span>
+      <span class="ivd-fact__k">Steamdagi narx</span>
+      <span class="ivd-fact__v">{% if skin.usd %}${{ skin.usd }}{% else %}—{% endif %}</span>
     </div>
   </div>
 </section>

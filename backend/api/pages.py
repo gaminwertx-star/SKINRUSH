@@ -182,6 +182,8 @@ def drop_detail(request, pk):
             "finish": parts[1] if len(parts) > 1 else it.name,
             "img": it.image, "price": it.price,
             "rarity": it.rarity, "color": it.color or "#b0c3d9", "wear": it.wear,
+            # No Steam price source feeds the catalog yet, so this stays "—".
+            "usd": None,
         },
         "owner_name": owner.display_name if owner else "Anonim",
         "owner_photo": owner.photo_url if owner else "",
