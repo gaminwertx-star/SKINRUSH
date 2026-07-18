@@ -829,8 +829,7 @@ def withdraw(request):
 
     return render(request, "withdraw.html", {
         "ACTIVE": "inventar",
-        "skin": _inv_row(rec.id, rec.skin_name, rec.skin_image, rec.skin_price,
-                         rec.rarity, rec.color, rec.wear, rec.case_name),
+        "skin": _inv_row(rec),
         "trade_url": player.trade_url,
         "active": _active_withdraw(player),
         # No URL saved yet, or the player asked to change the one on file.
