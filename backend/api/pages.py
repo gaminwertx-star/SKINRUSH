@@ -160,9 +160,10 @@ def daily_claim(request):
 
 # ---------------------------------------------------------------- cases
 def top_drops_feed(request):
-    """JSON the top strip polls to update itself without a page reload."""
-    from .context_processors import top_feed
-    return JsonResponse({"drops": top_feed()})
+    """JSON the strip polls to update itself without a page reload — both the
+    LIVE feed and the TOP (most expensive) list."""
+    from .context_processors import top_expensive, top_feed
+    return JsonResponse({"drops": top_feed(), "top": top_expensive()})
 
 
 def drop_detail(request, pk):
@@ -995,6 +996,9 @@ def upgrade_play(request):
         request.session["inv"] = inv
         request.session.modified = True
 
+    if won and to.case_id:
+        Drop.objects.create(case=to.case, item=to, player=player)
+
     request.session["upg_result"] = {
         "won": won, "chance": chance, "pct": round(chance * 100),
         "landing": round(landing, 2), "chance_deg": round(chance_deg, 2),
@@ -1280,6 +1284,9 @@ def kontrakt_play(request):
                     "wear": out.wear, "case_name": out.case.name if out.case else ""})
         request.session["inv"] = inv
         request.session["inv_uid"] = uid
+
+    if out.case_id:
+        Drop.objects.create(case=out.case, item=out, player=player)
 
     request.session["contract_result"] = {
         "inputs": inputs, "output": item_payload(out),

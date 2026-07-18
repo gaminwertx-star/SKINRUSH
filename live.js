@@ -14,15 +14,17 @@
 (function () {
   "use strict";
 
-  // ---- top drops strip: real live feed on every page ----
-  // Not a ticker — it does not auto-scroll. It sits on the newest real drops and
-  // only changes when a fresh opening arrives: the new skin is prepended at the
-  // front (see .drop--new) and the strip snaps back to the start so it is seen.
-  // When nobody is opening, nothing moves. Polling pauses while the tab hidden.
+  // ---- LIVE / TOP drops strip: on every page ----
+  // LIVE is a real event feed — it does not auto-scroll, it sits on the newest
+  // real drops and only moves when a fresh opening arrives (the new skin slides
+  // in at the front, see .drop--new). TOP is the most valuable wins, dearest
+  // first. The label toggles which strip shows. Polling pauses when tab hidden.
   (function liveStrip() {
-    var track = document.getElementById("topTrack");
-    if (!track) return;
-    var viewport = track.parentElement;
+    var strip = document.getElementById("liveStrip");
+    var live = document.getElementById("topTrack");
+    var top = document.getElementById("topTrackTop");
+    if (!strip || !live) return;
+    var viewport = live.parentElement;
     var STRIP_POLL = 5000;
 
     function esc(s) {
@@ -31,7 +33,6 @@
       });
     }
 
-    // `fresh` marks a card that just arrived, so it slides in at the front.
     function cardHTML(d, fresh) {
       return '<a class="drop drop-link' + (fresh ? " drop--new" : "") +
         '" href="' + esc(d.href) + '" style="--rc:' + esc(d.color) + '">' +
@@ -39,23 +40,47 @@
         '<div class="drop__name">' + esc(d.name) + "</div></a>";
     }
 
+    // ---- LIVE <-> TOP toggle ----
+    strip.querySelectorAll(".live-tab").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var mode = btn.getAttribute("data-mode");
+        strip.setAttribute("data-mode", mode);
+        strip.querySelectorAll(".live-tab").forEach(function (b) {
+          b.classList.toggle("is-active", b.getAttribute("data-mode") === mode);
+        });
+        var showTop = mode === "top";
+        if (top) top.hidden = !showTop;
+        live.hidden = showTop;
+        viewport.scrollLeft = 0;
+      });
+    });
+
     setInterval(function () {
       if (document.hidden) return;
       fetch("/top-drops-feed/", { credentials: "same-origin", cache: "no-store" })
         .then(function (r) { return r.json(); })
         .then(function (data) {
+          // LIVE: prepend fresh drops at the front
           var drops = data && data.drops;
-          if (!drops || !drops.length) return;
-          var newest = String(drops[0].id);
-          var prevTop = parseInt(track.getAttribute("data-top"), 10) || 0;
-          if (String(newest) === String(prevTop)) return;  // nothing new
-          // Newest first; anything past the previous top just dropped and slides
-          // in at the front.
-          track.innerHTML = drops.map(function (d) {
-            return cardHTML(d, d.id > prevTop);
-          }).join("");
-          track.setAttribute("data-top", newest);
-          if (viewport) viewport.scrollLeft = 0;  // show the new one at the front
+          if (drops && drops.length) {
+            var newest = String(drops[0].id);
+            var prevTop = parseInt(live.getAttribute("data-top"), 10) || 0;
+            if (String(newest) !== String(prevTop)) {
+              live.innerHTML = drops.map(function (d) {
+                return cardHTML(d, d.id > prevTop);
+              }).join("");
+              live.setAttribute("data-top", newest);
+              if (strip.getAttribute("data-mode") === "live") viewport.scrollLeft = 0;
+            }
+          }
+          // TOP: refresh the valuable-wins list (order by price, changes rarely)
+          if (top && data && data.top) {
+            var sig = data.top.map(function (d) { return d.id; }).join(",");
+            if (top.getAttribute("data-sig") !== sig) {
+              top.innerHTML = data.top.map(function (d) { return cardHTML(d, false); }).join("");
+              top.setAttribute("data-sig", sig);
+            }
+          }
         })
         .catch(function () {});
     }, STRIP_POLL);

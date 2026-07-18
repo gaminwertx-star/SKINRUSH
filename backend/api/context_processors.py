@@ -4,7 +4,10 @@ Puts the language catalog, the current player / balance and the live TOP DROPS
 feed into every template so `base.html` can render the header, nav and footer
 without any client-side JavaScript.
 """
+from datetime import timedelta
+
 from django.urls import reverse
+from django.utils import timezone
 
 from . import i18n
 from .auth_telegram import current_player
@@ -12,26 +15,50 @@ from .models import Drop
 from .templatetags.skinrush_extras import img as _img
 from .views import get_state
 
-# How many drops the marquee holds. It shows every drop now, not just rare ones —
-# the point is the live feed of what real players are actually opening.
 FEED_LIMIT = 30
+# A drop must age this long before it enters the feed, so a player's own opening
+# never shows in the strip before their reveal animation (~5.85s) finishes.
+FEED_DELAY_SECONDS = 7
+# The floor for the TOP strip: only genuinely valuable wins belong there.
+TOP_MIN_PRICE = 1_000_000
+TOP_LIMIT = 30
 
 
-def top_feed(limit=FEED_LIMIT):
-    """The live TOP DROPS feed: newest real drops first, every rarity.
-
-    Shared by this context processor (first paint) and the JSON endpoint the
-    strip polls, so both always agree on shape and ordering.
-    """
-    rows = (Drop.objects.select_related("item", "player")
-            .order_by("-id")[:limit])
-    return [{
+def _card(d):
+    return {
         "id": d.id,
         "name": d.item.name,
         "img": _img(d.item.image),
         "color": d.item.color or "#b0c3d9",
+        "price": d.item.price,
         "href": reverse("drop", args=[d.id]),
-    } for d in rows]
+    }
+
+
+def top_feed(limit=FEED_LIMIT):
+    """The LIVE feed: newest real drops first, every rarity, but only ones old
+    enough that the opener has already seen their reveal (see FEED_DELAY)."""
+    cutoff = timezone.now() - timedelta(seconds=FEED_DELAY_SECONDS)
+    rows = (Drop.objects.select_related("item", "player")
+            .filter(created_at__lte=cutoff).order_by("-id")[:limit])
+    return [_card(d) for d in rows]
+
+
+def top_expensive(limit=TOP_LIMIT):
+    """The TOP strip: the most valuable wins (>= TOP_MIN_PRICE), dearest first.
+
+    Distinct by skin name so the same trophy skin does not fill the row."""
+    rows = (Drop.objects.select_related("item", "player")
+            .filter(item__price__gte=TOP_MIN_PRICE).order_by("-item__price", "-id"))
+    seen, out = set(), []
+    for d in rows:
+        if d.item.name in seen:
+            continue
+        seen.add(d.item.name)
+        out.append(_card(d))
+        if len(out) >= limit:
+            break
+    return out
 
 
 def site(request):
@@ -59,4 +86,5 @@ def site(request):
         "ME": me,
         "PLAYER": player,
         "TOP_DROPS": top_feed(),
+        "TOP_EXPENSIVE": top_expensive(),
     }

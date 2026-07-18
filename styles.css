@@ -63,25 +63,26 @@ body {
   border-right: 1px solid var(--line);
   min-width: 66px;
 }
-.live-strip__label {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 1px;
-  color: var(--muted);
+/* LIVE / TOP toggle. Inactive is muted; the active one lights up — LIVE green
+   with a pulsing dot, TOP gold with a star. */
+.live-tab {
+  display: block; background: none; border: none; cursor: pointer; font-family: inherit;
+  text-align: left; font-size: 12px; font-weight: 800; letter-spacing: 1px;
+  color: var(--muted); padding: 2px 0 2px 14px; position: relative;
+  transition: color .15s ease;
 }
-.live-strip__label--top { color: var(--gold); position: relative; padding-left: 12px; }
-.live-strip__label--top::before {
+.live-tab:hover { color: #fff; }
+.live-tab--live.is-active { color: var(--green); }
+.live-tab--live.is-active::before {
+  content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--green); box-shadow: 0 0 8px var(--green);
+  animation: pulse 1.4s infinite;
+}
+.live-tab--top.is-active { color: var(--gold); }
+.live-tab--top.is-active::before {
   content: "\2605"; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
   font-size: 9px; color: var(--gold);
-}
-.live-strip__label--live { color: var(--green); position: relative; padding-left: 12px; }
-.live-strip__label--live::before {
-  content: "";
-  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 8px var(--green);
-  animation: pulse 1.4s infinite;
 }
 /* A real event feed, not a ticker: it does not auto-scroll. It sits still on
    the newest real drops and only moves when a fresh one slides in at the front

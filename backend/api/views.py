@@ -381,6 +381,9 @@ def _resolve_battle(battle):
                     skin_price=it.get("price", 0), rarity=it.get("tier_label", ""),
                     color=it.get("color", ""), wear=it.get("wear", ""), sold=False,
                     source=OpenRecord.SRC_BATTLE)
+                # feed the win into the live/top drops strip
+                if case and it.get("id"):
+                    Drop.objects.create(case=case, item_id=it["id"], player=wp)
 
 
 def _battle_card(b):
@@ -621,6 +624,8 @@ def upgrade_play(request):
                 skin_name=to.name, skin_image=to.image, skin_price=to.price,
                 rarity=to.rarity, color=to.color, wear=to.wear, sold=False,
                 source=OpenRecord.SRC_UPGRADE)
+            if to.case_id:
+                Drop.objects.create(case=to.case, item=to, player=player)
     else:
         inv = [r for r in request.session.get("inv", []) if r["id"] != from_uid]
         if won:
