@@ -65,34 +65,37 @@ def _tasks(lang):
 
 
 def _bank_pending(request):
-    """Move the unclaimed drop (session pending_win) into the inventory.
+    """Clear the pending-win marker (reel + card) after an opening.
 
-    Returns the banked payload, or None if there was nothing pending.
-    Used by `claim` and called defensively before a new open so an
-    unclaimed drop is never silently overwritten and lost.
+    The skin itself is banked into the inventory at open time now, so this only
+    clears the marker. Sessions opened before that change may still hold an
+    unbanked drop (no ``banked`` flag) — those are banked here so nothing is
+    lost during the transition. Returns the popped payload, or None.
     """
     pw = request.session.pop("pending_win", None)
     request.session.pop("reel", None)
     request.session.modified = True
     if not pw:
         return None
-    player = current_player(request)
-    if player:
-        case = Case.objects.filter(pk=pw["case_id"]).first()
-        OpenRecord.objects.create(
-            player=player, case=case, case_name=pw["case_name"],
-            skin_name=pw["name"], skin_image=pw["image"], skin_price=pw["price"],
-            rarity=pw["rarity"], color=pw["color"], wear=pw["wear"], sold=False,
-            source=OpenRecord.SRC_CASE)
-    else:
-        inv = request.session.get("inv", [])
-        uid = request.session.get("inv_uid", 0) + 1
-        inv.append({"id": uid, "name": pw["name"], "image": pw["image"],
-                    "price": pw["price"], "rarity": pw["rarity"], "color": pw["color"],
-                    "wear": pw["wear"], "case_name": pw["case_name"]})
-        request.session["inv"] = inv
-        request.session["inv_uid"] = uid
-        request.session.modified = True
+    if not pw.get("banked"):
+        # legacy: opened before skins were banked at open — bank it now
+        player = current_player(request)
+        if player:
+            case = Case.objects.filter(pk=pw["case_id"]).first()
+            OpenRecord.objects.create(
+                player=player, case=case, case_name=pw["case_name"],
+                skin_name=pw["name"], skin_image=pw["image"], skin_price=pw["price"],
+                rarity=pw["rarity"], color=pw["color"], wear=pw["wear"], sold=False,
+                source=OpenRecord.SRC_CASE)
+        else:
+            inv = request.session.get("inv", [])
+            uid = request.session.get("inv_uid", 0) + 1
+            inv.append({"id": uid, "name": pw["name"], "image": pw["image"],
+                        "price": pw["price"], "rarity": pw["rarity"], "color": pw["color"],
+                        "wear": pw["wear"], "case_name": pw["case_name"]})
+            request.session["inv"] = inv
+            request.session["inv_uid"] = uid
+            request.session.modified = True
     return pw
 
 
@@ -327,13 +330,33 @@ def case_open(request, slug):
     Drop.objects.create(case=case, item=winner, player=player)
     Case.objects.filter(pk=case.pk).update(opens=case.opens + 1)
 
-    request.session["pending_win"] = {
+    pending = {
         "skin_id": winner.id, "case_id": case.id, "case_name": case.name,
         "case_slug": case.slug, "name": winner.name, "image": winner.image,
         "price": winner.price, "rarity": winner.rarity, "color": winner.color,
         "wear": winner.wear, "float": game.wear_float(winner.wear),
-        "weapon": winner.weapon, "finish": winner.finish,
+        "weapon": winner.weapon, "finish": winner.finish, "banked": True,
     }
+    # Bank the skin into the inventory NOW, at open time — leaving the result
+    # page before pressing Olish must never lose a skin the player paid for.
+    # Olish/Sotish then just keep or sell what is already theirs.
+    if player:
+        rec = OpenRecord.objects.create(
+            player=player, case=case, case_name=case.name,
+            skin_name=winner.name, skin_image=winner.image, skin_price=winner.price,
+            rarity=winner.rarity, color=winner.color, wear=winner.wear, sold=False,
+            source=OpenRecord.SRC_CASE)
+        pending["record_id"] = rec.id
+    else:
+        inv = request.session.get("inv", [])
+        uid = request.session.get("inv_uid", 0) + 1
+        inv.append({"id": uid, "name": winner.name, "image": winner.image,
+                    "price": winner.price, "rarity": winner.rarity,
+                    "color": winner.color, "wear": winner.wear, "case_name": case.name})
+        request.session["inv"] = inv
+        request.session["inv_uid"] = uid
+        pending["guest_uid"] = uid
+    request.session["pending_win"] = pending
     reel = [game.draw_item(items) for _ in range(60)]
     reel[50] = winner
     request.session["reel"] = [item_payload(it) for it in reel]
@@ -392,14 +415,29 @@ def sell(request):
             messages.success(request, f"Sotildi: {row['name']} · +{row['price']}")
         return redirect("inventory")
 
-    # Selling the freshly-opened drop.
+    # Selling the freshly-opened drop — which is already banked in the inventory,
+    # so sell that record rather than just crediting a phantom skin.
     pw = request.session.get("pending_win")
     if not pw:
         return redirect("home")
     request.session.pop("pending_win", None)
     request.session.pop("reel", None)
     request.session.modified = True
-    _credit(request, player, pw["price"])
+    if player and pw.get("record_id"):
+        # atomic claim: only credit if this request flips it sold
+        claimed = player.opens.filter(pk=pw["record_id"], sold=False, is_locked=False).update(
+            sold=True, disposition=OpenRecord.DISP_SOLD)
+        if claimed:
+            _credit(request, player, pw["price"])
+    elif not player and pw.get("guest_uid"):
+        inv = request.session.get("inv", [])
+        if any(r["id"] == pw["guest_uid"] for r in inv):
+            request.session["inv"] = [r for r in inv if r["id"] != pw["guest_uid"]]
+            request.session.modified = True
+            _credit(request, None, pw["price"])
+    else:
+        # legacy pending win that never entered the inventory
+        _credit(request, player, pw["price"])
     messages.success(request, f"Sotildi: {pw['name']} · +{pw['price']}")
     return redirect("case", slug=pw.get("case_slug") or "") if pw.get("case_slug") else redirect("home")
 
