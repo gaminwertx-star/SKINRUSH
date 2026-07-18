@@ -29,9 +29,12 @@
       });
     }
 
-    function cardHTML(d, dim) {
-      return '<a class="drop drop-link" href="' + esc(d.href) +
-        '" style="--rc:' + esc(d.color) + '"' + (dim ? ' aria-hidden="true" tabindex="-1"' : "") + ">" +
+    // `fresh` marks a card that arrived on this poll, so it slides in at the
+    // front (see .drop--new) — the live "just dropped" feel.
+    function cardHTML(d, dim, fresh) {
+      return '<a class="drop drop-link' + (fresh ? " drop--new" : "") +
+        '" href="' + esc(d.href) + '" style="--rc:' + esc(d.color) + '"' +
+        (dim ? ' aria-hidden="true" tabindex="-1"' : "") + ">" +
         '<img class="drop__img" src="' + esc(d.img) + '" alt="" loading="lazy" />' +
         '<div class="drop__name">' + esc(d.name) + "</div></a>";
     }
@@ -44,10 +47,16 @@
           var drops = data && data.drops;
           if (!drops || !drops.length) return;
           var newest = String(drops[0].id);
-          if (track.getAttribute("data-top") === newest) return;  // nothing new
-          var half = drops.map(function (d) { return cardHTML(d, false); }).join("");
-          var dim = drops.map(function (d) { return cardHTML(d, true); }).join("");
-          track.innerHTML = half + dim;         // both marquee halves
+          var prevTop = parseInt(track.getAttribute("data-top"), 10) || 0;
+          if (String(newest) === String(prevTop)) return;  // nothing new
+          // Newest first; anything past the previous top is what just dropped,
+          // so it gets prepended at the front and animated in.
+          function render(dim) {
+            return drops.map(function (d) {
+              return cardHTML(d, dim, d.id > prevTop);
+            }).join("");
+          }
+          track.innerHTML = render(false) + render(true);  // both marquee halves
           track.setAttribute("data-top", newest);
         })
         .catch(function () {});
