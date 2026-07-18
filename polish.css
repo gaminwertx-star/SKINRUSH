@@ -478,3 +478,22 @@ body::after {
   /* the reveal page ends in action buttons — keep them well clear */
   .case-view .modal__actions { margin-bottom: 12px; }
 }
+
+/* ---------- mobile: compact the reveal so the Olish/Sotish buttons are
+   never stuck behind the bottom nav (the reel + big card used to push them
+   below the fold) ---------- */
+@media (max-width: 820px) {
+  .opening { height: 126px !important; margin: 4px 0 12px !important; }
+  .reveal-box { padding: 16px 14px 14px !important; margin: 8px auto 4px !important; }
+  .reveal__imgwrap { height: 102px !important; margin-bottom: 4px !important; }
+  .reveal__img { max-height: 100px !important; }
+  .reveal__glow { width: 210px !important; height: 210px !important; }
+  .reveal__tier { margin-bottom: 6px !important; }
+  /* the detail table is what pushed the buttons below the nav; the rarity, name
+     and price above already say what you won, and the full spec is on the skin
+     page — so drop it on mobile and let the Olish/Sotish buttons sit in view */
+  .reveal__details { display: none !important; }
+  /* clear scroll room + breathing space under the action buttons */
+  .case-view { padding-bottom: 120px !important; }
+  .case-view .modal__actions { margin-top: 14px !important; margin-bottom: 18px !important; }
+}
