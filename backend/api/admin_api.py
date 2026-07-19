@@ -20,9 +20,9 @@ from rest_framework.response import Response
 from .authentication import CsrfExemptSession
 from .models import (
     Case, CaseItem, CoinPurchase, Drop, OpenRecord, PaymentAdmin, Player,
-    PromoCode, TopUpRequest, WithdrawRequest,
+    PromoCode, TopUpMessage, TopUpRequest, WithdrawRequest,
 )
-from .telegram_bot import notify_withdraw
+from .telegram_bot import _pay as _credit_topup, notify_topup_admin_reply, notify_withdraw
 
 
 def _case_row(c):
@@ -335,6 +335,148 @@ def admin_topups(request):
     } for t in qs[:300]]
     return Response({"rows": rows, "counts": counts,
                      "total": TopUpRequest.objects.count()})
+
+
+# ---------- top-up chat (web inbox: many conversations at once) ----------
+def _msg_json(m):
+    return {"id": m.id, "sender": m.sender, "text": m.text,
+            "image": m.image.url if m.image else None,
+            "at": m.created_at.strftime("%H:%M")}
+
+
+def _canned(req, kind):
+    """The three quick replies, worded for the player."""
+    if kind == "card":
+        a = req.admin
+        if not a:
+            return "Karta hali biriktirilmagan."
+        amt = f"{req.amount_sum:,}".replace(",", " ")
+        return (f"💳 To'lov uchun karta:\n{a.card_number}\n{a.card_holder}\n\n"
+                f"Shunga {amt} so'm o'tkazib, check (skrinshot) yuboring.")
+    if kind == "soon":
+        coins = f"{req.coins:,}".replace(",", " ")
+        return f"⏳ 2 daqiqada balansingiz {coins} coinga to'ladi."
+    if kind == "bad":
+        return "❌ Check noto'g'ri yoki soxta. Iltimos, qayta to'lov qiling."
+    return ""
+
+
+def _chat_row(t, unread):
+    return {
+        "id": t.id,
+        "player": {"name": t.player.display_name, "username": t.player.username,
+                   "telegram_id": t.player.telegram_id, "photo": t.player.photo_url},
+        "admin": t.admin.name if t.admin else None,
+        "amount_sum": t.amount_sum, "coins": t.coins, "bonus_percent": t.bonus_percent,
+        "promo": t.promo.code if t.promo else None,
+        "status": t.status,
+        "unread": unread.get(t.id, 0),
+        "updated_at": t.updated_at.isoformat(),
+    }
+
+
+@api_view(["GET"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_topup_chats(request):
+    """Inbox: every top-up conversation, active first, with unread counts."""
+    show = (request.query_params.get("filter") or "active").strip()
+    qs = TopUpRequest.objects.select_related("player", "admin", "promo")
+    if show == "active":
+        qs = qs.filter(status__in=TopUpRequest.OPEN_STATUSES)
+    qs = qs.order_by("-updated_at")[:200]
+    reqs = list(qs)
+    unread = dict(
+        TopUpMessage.objects.filter(request__in=reqs, sender=TopUpMessage.USER,
+                                    read_by_admin=False)
+        .values_list("request").annotate(n=Count("id")).values_list("request", "n"))
+    waiting = TopUpRequest.objects.filter(status__in=TopUpRequest.OPEN_STATUSES).count()
+    total_unread = sum(unread.values())
+    return Response({"rows": [_chat_row(t, unread) for t in reqs],
+                     "active": waiting, "unread": total_unread})
+
+
+@api_view(["GET"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_topup_chat(request, pk):
+    """One conversation's full message history; marks the user's as read."""
+    t = (TopUpRequest.objects.select_related("player", "admin", "promo")
+         .filter(pk=pk).first())
+    if t is None:
+        return Response({"error": "Topilmadi"}, status=404)
+    t.messages.filter(sender=TopUpMessage.USER, read_by_admin=False).update(
+        read_by_admin=True)
+    a = t.admin
+    return Response({
+        "id": t.id, "status": t.status,
+        "player": {"name": t.player.display_name, "username": t.player.username,
+                   "telegram_id": t.player.telegram_id, "photo": t.player.photo_url,
+                   "balance": t.player.balance},
+        "amount_sum": t.amount_sum, "coins": t.coins, "bonus_percent": t.bonus_percent,
+        "promo": t.promo.code if t.promo else None,
+        "card": {"number": a.card_number, "holder": a.card_holder, "name": a.name} if a else None,
+        "messages": [_msg_json(m) for m in t.messages.all()],
+    })
+
+
+@api_view(["POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_topup_send(request, pk):
+    """Admin sends a message — free text, or a canned reply via ``kind``."""
+    t = TopUpRequest.objects.select_related("player", "admin").filter(pk=pk).first()
+    if t is None:
+        return Response({"error": "Topilmadi"}, status=404)
+    if t.status not in TopUpRequest.OPEN_STATUSES:
+        return Response({"error": "Bu suhbat yopilgan"}, status=400)
+    kind = request.data.get("kind")
+    text = _canned(t, kind) if kind else (request.data.get("text") or "").strip()[:2000]
+    if not text:
+        return Response({"error": "Xabar bo'sh"}, status=400)
+    msg = TopUpMessage.objects.create(
+        request=t, sender=TopUpMessage.ADMIN, text=text, read_by_admin=True)
+    if t.status == TopUpRequest.WAITING:
+        t.status = TopUpRequest.CONNECTED
+        t.save(update_fields=["status", "updated_at"])
+    else:
+        t.save(update_fields=["updated_at"])
+    notify_topup_admin_reply(t.player.telegram_id)   # nudge on Telegram
+    return Response({"ok": True, "message": _msg_json(msg), "status": t.status})
+
+
+@api_view(["POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_topup_pay(request, pk):
+    """Credit the promised coins (idempotent; notifies the player)."""
+    t = TopUpRequest.objects.filter(pk=pk).first()
+    if t is None:
+        return Response({"error": "Topilmadi"}, status=404)
+    err = _credit_topup(t)      # bot's crediting logic: atomic + CoinPurchase + notify
+    if err:
+        return Response({"error": err}, status=400)
+    TopUpMessage.objects.create(
+        request=t, sender=TopUpMessage.ADMIN, read_by_admin=True,
+        text=f"✅ Balansingiz {t.coins:,} coinga to'ldirildi. Rahmat!".replace(",", " "))
+    t.refresh_from_db()
+    return Response({"ok": True, "status": t.status})
+
+
+@api_view(["POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_topup_close(request, pk):
+    t = TopUpRequest.objects.filter(pk=pk).first()
+    if t is None:
+        return Response({"error": "Topilmadi"}, status=404)
+    if t.status != TopUpRequest.PAID:
+        t.release_promo()
+        t.status = TopUpRequest.CLOSED
+        t.save(update_fields=["status", "updated_at"])
+        from .telegram_bot import notify
+        notify(t.player.telegram_id, "🔚 To'lov suhbati yopildi.")
+    return Response({"ok": True, "status": t.status})
 
 
 @api_view(["POST"])

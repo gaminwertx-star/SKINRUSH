@@ -28,9 +28,12 @@ from .templatetags.skinrush_extras import img as _img_url
 from .models import (
     TOPUP_MIN_SUM, TOPUP_PACK_COINS, TOPUP_PACK_SUM,
     Battle, Case, CaseItem, Drop, FreeCase, OpenRecord, PaymentAdmin, Player,
-    PromoCode, PromoRedemption, TopUpRequest, WithdrawRequest, coins_for_sum,
+    PromoCode, PromoRedemption, TopUpMessage, TopUpRequest, WithdrawRequest,
+    coins_for_sum,
 )
-from .telegram_bot import notify_topup_request, notify_withdraw
+from .telegram_bot import (
+    notify_topup_new_message, notify_topup_request, notify_withdraw,
+)
 from .views import (
     DAILY_DAYS, DAILY_TASKS, UPGRADE_EDGE,
     _battle_card, _card_cases, _clamp, _credit, _daily_days, _int,
@@ -749,6 +752,68 @@ def toldirish(request):
 def _active_topup(player):
     return (player.topups.filter(status__in=TopUpRequest.OPEN_STATUSES)
             .select_related("admin").first())
+
+
+# ---------------------------------------------------------------- top-up chat
+def _is_image_upload(f):
+    """A light check that an upload is an image — we store it, we don't decode it."""
+    ok_ext = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic")
+    ct = (getattr(f, "content_type", "") or "").lower()
+    name = (getattr(f, "name", "") or "").lower()
+    return ct.startswith("image/") or name.endswith(ok_ext)
+
+
+def _msg_json(m):
+    return {
+        "id": m.id, "sender": m.sender, "text": m.text,
+        "image": m.image.url if m.image else None,
+        "at": m.created_at.strftime("%H:%M"),
+    }
+
+
+def toldirish_chat(request):
+    """Poll: the player's active/last top-up conversation as JSON."""
+    player = current_player(request)
+    req = (player.topups.select_related("admin").order_by("-created_at").first()
+           if player else None)
+    if not req:
+        return JsonResponse({"status": None, "messages": []})
+    # anything the admin sent is now seen by the player
+    req.messages.filter(sender=TopUpMessage.ADMIN, read_by_user=False).update(
+        read_by_user=True)
+    return JsonResponse({
+        "status": req.status,
+        "status_label": dict(TopUpRequest.STATUSES).get(req.status, req.status),
+        "amount_sum": req.amount_sum, "coins": req.coins,
+        "admin": req.admin.name if req.admin else None,
+        "messages": [_msg_json(m) for m in req.messages.all()],
+    })
+
+
+@require_POST
+def toldirish_send(request):
+    """Player sends a chat message (text and/or a receipt photo)."""
+    player = current_player(request)
+    if not player:
+        return JsonResponse({"error": "auth"}, status=403)
+    req = _active_topup(player)
+    if not req:
+        return JsonResponse({"error": "Faol so'rov yo'q"}, status=400)
+    text = (request.POST.get("text") or "").strip()[:2000]
+    img = request.FILES.get("image")
+    if img:
+        if not _is_image_upload(img):
+            return JsonResponse({"error": "Faqat rasm yuborish mumkin"}, status=400)
+        if img.size > 12 * 1024 * 1024:
+            return JsonResponse({"error": "Rasm juda katta (12MB dan kam)"}, status=400)
+    if not text and not img:
+        return JsonResponse({"ok": True, "message": None})
+    msg = TopUpMessage.objects.create(
+        request=req, sender=TopUpMessage.USER, text=text, image=img,
+        read_by_user=True)
+    if req.admin:
+        notify_topup_new_message(req.admin.tg_chat_id, player.display_name)
+    return JsonResponse({"ok": True, "message": _msg_json(msg)})
 
 
 def toldirish_promo(request):

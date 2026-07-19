@@ -87,9 +87,11 @@ if _db_url:
     import dj_database_url
 
     # Railway's internal Postgres (*.railway.internal) does NOT speak SSL, so
-    # forcing sslmode=require there breaks the connection. External hosts
-    # (Render, or Railway's public proxy) do require SSL. Detect and adapt.
-    _ssl_require = ".railway.internal" not in _db_url
+    # forcing sslmode=require there breaks the connection. A local Postgres on
+    # the same VPS (localhost/127.0.0.1, or a unix socket) has no SSL either.
+    # External hosts (Render, or Railway's public proxy) DO require SSL.
+    _no_ssl = (".railway.internal", "@localhost", "@127.0.0.1", "@/")
+    _ssl_require = not any(h in _db_url for h in _no_ssl)
     DATABASES["default"] = dj_database_url.parse(
         _db_url, conn_max_age=600, ssl_require=_ssl_require
     )
@@ -103,6 +105,11 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# User uploads (payment-receipt photos in the top-up chat). Kept out of the
+# code tree so a redeploy never touches them.
+MEDIA_URL = "/media/"
+MEDIA_ROOT = FRONTEND_DIR / "media"
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},

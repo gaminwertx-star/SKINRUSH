@@ -78,6 +78,7 @@ document.getElementById("nav").addEventListener("click", (e) => {
 });
 
 function switchView(view) {
+  if (view !== "topups" && typeof stopTuPoll === "function") stopTuPoll();
   document.querySelectorAll(".nav-item").forEach((b) =>
     b.classList.toggle("is-active", b.dataset.view === view)
   );
@@ -322,64 +323,146 @@ function setTopupBadge(n) {
   b.hidden = !n;
 }
 
+// ---------- top-up chat inbox (many conversations at once) ----------
+let tuOpenId = null;      // currently open conversation
+let tuSeen = {};          // message ids rendered in the open chat
+let tuPoll = null;        // polling timer
+
+function stopTuPoll() { if (tuPoll) { clearInterval(tuPoll); tuPoll = null; } }
+
 async function renderTopups() {
+  stopTuPoll();
+  tuOpenId = null; tuSeen = {};
   main.innerHTML = `
     <div class="page-head"><div>
-      <div class="page-title">To'lov so'rovlari</div>
-      <div class="page-sub">Coin sotib olish — adminlar Telegramda hal qiladi</div>
+      <div class="page-title">To'lov chat</div>
+      <div class="page-sub">Bir vaqtda bir nechta foydalanuvchi bilan yozishing mumkin</div>
     </div></div>
-    <div class="filter-row" id="tuFilters"></div>
-    <div id="tuBody"><div class="loading">Yuklanmoqda…</div></div>`;
-  document.getElementById("tuFilters").addEventListener("click", (e) => {
-    const chip = e.target.closest(".filter-chip");
-    if (!chip) return;
-    tuFilter = chip.dataset.status;
-    loadTopups();
-  });
-  loadTopups();
+    <div class="tuc">
+      <div class="tuc__list" id="tucList"><div class="loading">Yuklanmoqda…</div></div>
+      <div class="tuc__chat" id="tucChat">
+        <div class="tuc__empty">Suhbatni tanlang</div>
+      </div>
+    </div>`;
+  await loadTuInbox();
+  tuPoll = setInterval(() => {
+    if (document.hidden) return;
+    loadTuInbox();
+    if (tuOpenId) refreshTuChat(tuOpenId);
+  }, 3500);
 }
 
-async function loadTopups() {
-  const body = document.getElementById("tuBody");
-  const d = await jget(`${API}/topups/?status=${encodeURIComponent(tuFilter)}`);
-  const tabs = [["all", "Hammasi", d.total], ...Object.keys(TU_STATUS).map((k) =>
-    [k, TU_STATUS[k].label, d.counts[k] || 0])];
-  document.getElementById("tuFilters").innerHTML = tabs.map(([k, label, n]) => `
-    <button class="filter-chip ${k === tuFilter ? "is-active" : ""}" data-status="${k}">
-      ${label} <span class="filter-chip__n">${fmt(n)}</span>
-    </button>`).join("");
-  setTopupBadge(d.counts.waiting || 0);
-
+async function loadTuInbox() {
+  const list = document.getElementById("tucList");
+  if (!list) { stopTuPoll(); return; }
+  const d = await jget(`${API}/topup-chats/`);
+  setTopupBadge(d.active || 0);
+  const badge = document.getElementById("tuBadge");
+  if (badge) { badge.textContent = fmt(d.active || 0); badge.hidden = !d.active; }
   if (!d.rows.length) {
-    body.innerHTML = `<div class="loading">Bu holatda so'rov yo'q.</div>`;
+    list.innerHTML = `<div class="loading">Faol suhbat yo'q.</div>`;
     return;
   }
-  body.innerHTML = `
-    <div class="table-wrap"><div class="table-scroll"><table>
-      <thead><tr>
-        <th>Sana</th><th>Foydalanuvchi</th><th>Summa</th><th>Coin</th>
-        <th>Promo</th><th>Admin</th><th>Holati</th>
-      </tr></thead>
-      <tbody>
-        ${d.rows.map((t) => {
-          const st = TU_STATUS[t.status] || { label: t.status, c: "#555" };
-          return `<tr>
-            <td class="cell-muted">${dt(t.created_at)}</td>
-            <td>
-              <div class="cell-name">${esc(t.player.name)}</div>
-              <div class="cell-muted" style="font-size:12px">
-                ${t.player.username ? "@" + esc(t.player.username) + " · " : ""}TG ${t.player.telegram_id || "—"}
-              </div>
-            </td>
-            <td><b>${fmt(t.amount_sum)}</b> <span class="cell-muted">so'm</span></td>
-            <td class="coin">${fmt(t.coins)}</td>
-            <td>${t.promo ? `<span class="pct">${esc(t.promo)} +${t.bonus_percent}%</span>` : '<span class="cell-muted">—</span>'}</td>
-            <td class="cell-muted">${t.admin ? esc(t.admin) : "—"}</td>
-            <td><span class="status-badge" style="--bc:${st.c}">${st.label}</span></td>
-          </tr>`;
-        }).join("")}
-      </tbody>
-    </table></div></div>`;
+  list.innerHTML = d.rows.map((t) => {
+    const st = TU_STATUS[t.status] || { label: t.status, c: "#555" };
+    return `<button class="tuc-item ${t.id === tuOpenId ? "is-active" : ""}" data-id="${t.id}">
+      <div class="tuc-item__top">
+        <span class="tuc-item__name">${esc(t.player.name)}</span>
+        ${t.unread ? `<span class="tuc-item__unread">${t.unread}</span>` : ""}
+      </div>
+      <div class="tuc-item__sub">
+        <b class="coin">${fmt(t.amount_sum)}</b> so'm → ${fmt(t.coins)} coin
+      </div>
+      <span class="status-badge status-badge--sm" style="--bc:${st.c}">${st.label}</span>
+    </button>`;
+  }).join("");
+  list.querySelectorAll("[data-id]").forEach((b) =>
+    b.addEventListener("click", () => openTuChat(+b.dataset.id)));
+}
+
+async function openTuChat(id) {
+  tuOpenId = id; tuSeen = {};
+  document.querySelectorAll(".tuc-item").forEach((b) =>
+    b.classList.toggle("is-active", +b.dataset.id === id));
+  const chat = document.getElementById("tucChat");
+  chat.innerHTML = `<div class="loading">Yuklanmoqda…</div>`;
+  const d = await jget(`${API}/topup-chats/${id}/`);
+  if (d.error) { chat.innerHTML = `<div class="loading">${esc(d.error)}</div>`; return; }
+  const open = d.status === "waiting" || d.status === "connected";
+  chat.innerHTML = `
+    <div class="tuc-head">
+      <div>
+        <div class="tuc-head__name">${esc(d.player.name)}
+          ${d.player.username ? `<span class="cell-muted">@${esc(d.player.username)}</span>` : ""}</div>
+        <div class="cell-muted" style="font-size:12px">
+          TG ${d.player.telegram_id || "—"} · Balans <b class="coin">${fmt(d.player.balance)}</b>
+        </div>
+      </div>
+      <div class="tuc-head__sum">
+        <b>${fmt(d.amount_sum)}</b> so'm → <b class="coin">${fmt(d.coins)}</b>
+        ${d.bonus_percent ? `<span class="pct">+${d.bonus_percent}%</span>` : ""}
+        ${d.card ? `<div class="cell-muted" style="font-size:11px">Karta: ${esc(d.card.number)} · ${esc(d.card.holder)}</div>` : `<div class="tu-red" style="font-size:11px">Karta biriktirilmagan</div>`}
+      </div>
+    </div>
+    <div class="tuc-body" id="tucBody"></div>
+    ${open ? `
+      <div class="tuc-canned">
+        <button class="tuc-chip" data-kind="card">💳 Karta + summa</button>
+        <button class="tuc-chip" data-kind="soon">⏳ 2 daqiqada</button>
+        <button class="tuc-chip" data-kind="bad">❌ Check noto'g'ri</button>
+      </div>
+      <div class="tuc-bar">
+        <input class="tuc-input" id="tucInput" placeholder="Xabar yozing…" autocomplete="off" />
+        <button class="admin-btn" id="tucSend">Yuborish</button>
+      </div>
+      <div class="tuc-acts">
+        <button class="admin-btn admin-btn--danger" id="tucClose">Suhbatni yopish</button>
+        <button class="admin-btn" id="tucPay">✅ Balansni to'ldirish (${fmt(d.coins)})</button>
+      </div>` : `<div class="tuc-closed">Suhbat ${d.status === "paid" ? "to'landi ✓" : "yopilgan"}.</div>`}`;
+  const bodyEl = document.getElementById("tucBody");
+  (d.messages || []).forEach((m) => addTuMsg(bodyEl, m));
+
+  if (open) {
+    chat.querySelectorAll(".tuc-chip").forEach((b) =>
+      b.addEventListener("click", () => sendTu(id, { kind: b.dataset.kind })));
+    const input = document.getElementById("tucInput");
+    const send = () => { const t = input.value.trim(); if (t) { input.value = ""; sendTu(id, { text: t }); } };
+    document.getElementById("tucSend").addEventListener("click", send);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+    document.getElementById("tucPay").addEventListener("click", () => openConfirm(
+      "Balansni to'ldirish",
+      `${fmt(d.coins)} coin foydalanuvchi hisobiga qo'shiladi. Check to'g'riligini tekshirdingizmi?`,
+      async () => { await jpost(`${API}/topup-chats/${id}/pay/`); openTuChat(id); loadTuInbox(); }));
+    document.getElementById("tucClose").addEventListener("click", () => openConfirm(
+      "Suhbatni yopish",
+      "Bu suhbat yopiladi (to'lovsiz). Promokod bo'lsa qaytariladi.",
+      async () => { await jpost(`${API}/topup-chats/${id}/close/`); openTuChat(id); loadTuInbox(); }));
+  }
+}
+
+function addTuMsg(bodyEl, m) {
+  if (!bodyEl || tuSeen[m.id]) return;
+  tuSeen[m.id] = 1;
+  const el = document.createElement("div");
+  el.className = "tuc-msg tuc-msg--" + m.sender;
+  let inner = "";
+  if (m.image) inner += `<a href="${esc(m.image)}" target="_blank" rel="noopener"><img class="tuc-msg__img" src="${esc(m.image)}" alt=""/></a>`;
+  if (m.text) inner += `<div class="tuc-msg__text">${esc(m.text).replace(/\n/g, "<br>")}</div>`;
+  inner += `<div class="tuc-msg__at">${esc(m.at)}</div>`;
+  el.innerHTML = inner;
+  bodyEl.appendChild(el);
+  bodyEl.scrollTop = bodyEl.scrollHeight;
+}
+
+async function sendTu(id, payload) {
+  const res = await jpost(`${API}/topup-chats/${id}/send/`, payload);
+  if (res.ok && res.data.message) addTuMsg(document.getElementById("tucBody"), res.data.message);
+}
+
+async function refreshTuChat(id) {
+  if (id !== tuOpenId) return;
+  const d = await jget(`${API}/topup-chats/${id}/`);
+  if (d.messages) d.messages.forEach((m) => addTuMsg(document.getElementById("tucBody"), m));
 }
 
 // ---------- payment admins ----------

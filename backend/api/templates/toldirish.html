@@ -16,39 +16,95 @@
     </div>
 
   {% elif active %}
-    <div class="tu-panel">
-      <div class="tu-live">
-        <span class="tu-live__dot"></span>
-        {% if active.status == 'waiting' %}
-          <b>So'rovingiz yuborildi</b>
-        {% else %}
-          <b>Admin siz bilan bog'landi</b>
-        {% endif %}
+    <div class="tu-chat" id="tuChat" data-status="{{ active.status }}">
+      <div class="tu-chat__head">
+        <div class="tu-chat__who">
+          <span class="tu-live__dot"></span>
+          <span id="tuChatTitle">{% if active.status == 'waiting' %}Admin bog'lanmoqda…{% else %}{{ active.admin.name|default:'Admin' }}{% endif %}</span>
+        </div>
+        <div class="tu-chat__sum">{{ active.amount_sum|fmt }} so'm →
+          <b class="tu-gold">{{ active.coins|fmt }}
+            <img class="coin-img" src="/images/coin.png" alt="" /></b></div>
       </div>
-      <div class="tu-sum"><span>Summa</span><b>{{ active.amount_sum|fmt }} so'm</b></div>
-      <div class="tu-sum"><span>Hisobga tushadi</span>
-        <b class="tu-gold">{{ active.coins|fmt }}
-          <img class="coin-img" src="/images/coin.png" alt="" /></b></div>
-      {% if active.bonus_percent %}
-        <div class="tu-sum"><span>Bonus</span><b class="tu-green">+{{ active.bonus_percent }}%</b></div>
-      {% endif %}
-      {% if active.admin %}
-        <div class="tu-sum"><span>Admin</span><b>{{ active.admin.name }}</b></div>
-      {% endif %}
-      <p class="tu-hint">
-        {% if active.status == 'waiting' %}
-          Adminimiz 5 daqiqa ichida Telegramda siz bilan bog'lanadi.
-          Botni ochiq qoldiring.
-        {% else %}
-          Suhbat Telegram botida davom etmoqda — check'ni o'sha yerga yuboring.
-        {% endif %}
-      </p>
+
+      <div class="tu-chat__body" id="tuChatBody">
+        <div class="tu-chat__hint" id="tuChatHint">
+          Admin karta raqamini yuboradi. To'lov qilib, check (skrinshot)ni shu yerga tashlang.
+        </div>
+      </div>
+
+      <form class="tu-chat__bar" id="tuChatForm" enctype="multipart/form-data">
+        <label class="tu-chat__clip" title="Rasm biriktirish">
+          {% icon "upload" %}
+          <input type="file" id="tuChatImg" accept="image/*" hidden />
+        </label>
+        <input class="tu-chat__input" id="tuChatText" placeholder="Xabar yozing…" autocomplete="off" />
+        <button class="tu-chat__send" type="submit" aria-label="Yuborish">{% icon "arrow-right" %}</button>
+      </form>
+      <div class="tu-chat__imgname" id="tuChatImgName" hidden></div>
+
       {% if active.status == 'waiting' %}
-        <form method="post" action="{% url 'toldirish-cancel' %}">{% csrf_token %}
+        <form method="post" action="{% url 'toldirish-cancel' %}" class="tu-chat__cancelwrap">{% csrf_token %}
           <button class="tu-cancel" type="submit">So'rovni bekor qilish</button>
         </form>
       {% endif %}
     </div>
+
+    <script>
+      (function () {
+        var chat = document.getElementById('tuChat');
+        var body = document.getElementById('tuChatBody');
+        var form = document.getElementById('tuChatForm');
+        var text = document.getElementById('tuChatText');
+        var fileIn = document.getElementById('tuChatImg');
+        var imgName = document.getElementById('tuChatImgName');
+        var title = document.getElementById('tuChatTitle');
+        var hint = document.getElementById('tuChatHint');
+        var seen = {};
+        function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+        function add(m){
+          if (seen[m.id]) return; seen[m.id]=1;
+          if (hint) { hint.remove(); hint=null; }
+          var el=document.createElement('div');
+          el.className='tu-msg tu-msg--'+m.sender;
+          var inner='';
+          if (m.image) inner+='<a href="'+esc(m.image)+'" target="_blank" rel="noopener"><img class="tu-msg__img" src="'+esc(m.image)+'" alt="" /></a>';
+          if (m.text) inner+='<div class="tu-msg__text">'+esc(m.text).replace(/\n/g,'<br>')+'</div>';
+          inner+='<div class="tu-msg__at">'+esc(m.at)+'</div>';
+          el.innerHTML=inner;
+          body.appendChild(el);
+          body.scrollTop=body.scrollHeight;
+        }
+        function poll(){
+          fetch('/toldirish/chat/',{credentials:'same-origin',cache:'no-store'})
+            .then(function(r){return r.json();})
+            .then(function(d){
+              (d.messages||[]).forEach(add);
+              if (d.status && d.status!=='waiting' && d.admin) title.textContent=d.admin;
+              if (d.status==='paid'){ title.textContent='✓ To’landi'; chat.setAttribute('data-status','paid'); }
+              if (d.status==='closed'){ title.textContent='Yopilgan'; }
+            }).catch(function(){});
+        }
+        fileIn.addEventListener('change',function(){
+          if (fileIn.files.length){ imgName.hidden=false; imgName.textContent='📎 '+fileIn.files[0].name; }
+          else imgName.hidden=true;
+        });
+        form.addEventListener('submit',function(e){
+          e.preventDefault();
+          var t=text.value.trim(), f=fileIn.files[0];
+          if (!t && !f) return;
+          var fd=new FormData();
+          fd.append('text',t); if (f) fd.append('image',f);
+          fd.append('csrfmiddlewaretoken','{{ csrf_token }}');
+          text.value=''; fileIn.value=''; imgName.hidden=true;
+          fetch('/toldirish/send/',{method:'POST',body:fd,credentials:'same-origin'})
+            .then(function(r){return r.json();})
+            .then(function(d){ if (d.message) add(d.message); })
+            .catch(function(){});
+        });
+        poll(); setInterval(function(){ if(!document.hidden) poll(); }, 3000);
+      })();
+    </script>
 
   {% elif not admins %}
     <div class="tu-alert tu-alert--warn">

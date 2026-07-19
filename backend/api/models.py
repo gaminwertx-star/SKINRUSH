@@ -435,6 +435,36 @@ class TopUpRequest(models.Model):
         return f"{self.player} · {self.amount_sum} so'm ({self.status})"
 
 
+class TopUpMessage(models.Model):
+    """One message in a top-up conversation, on the site (not the bot).
+
+    Either side can send text and/or an image (the player's payment receipt).
+    The chat is polled by both the player's page and the admin inbox, so no
+    admin is ever locked to a single conversation.
+    """
+
+    USER, ADMIN = "user", "admin"
+    SENDERS = [(USER, "Foydalanuvchi"), (ADMIN, "Admin")]
+
+    request = models.ForeignKey(TopUpRequest, on_delete=models.CASCADE,
+                                related_name="messages")
+    sender = models.CharField(max_length=8, choices=SENDERS)
+    text = models.TextField(blank=True)
+    # FileField (not ImageField) to avoid a Pillow dependency on the server; the
+    # upload view checks it is an image before saving.
+    image = models.FileField(upload_to="topup/%Y/%m/", blank=True, null=True)
+    # so the other side can show an unread badge without re-reading everything
+    read_by_user = models.BooleanField(default=False)
+    read_by_admin = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.sender}: {self.text[:30] or '[rasm]'}"
+
+
 class CoinPurchase(models.Model):
     """A coin top-up / purchase by a player."""
 

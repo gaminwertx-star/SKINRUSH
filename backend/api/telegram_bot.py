@@ -122,6 +122,35 @@ def _esc(s):
             .replace("<", "&lt;").replace(">", "&gt;"))
 
 
+def _open_app_button(text="🎮 Ochish"):
+    return {"inline_keyboard": [[{"text": text, "web_app": {"url": APP_URL}}]]}
+
+
+def notify_topup_admin_reply(chat_id):
+    """Nudge a player on Telegram that the admin replied in the site chat, so
+    they open the Mini App to see it even if it was closed."""
+    if not chat_id:
+        return
+    _api("sendMessage", {
+        "chat_id": chat_id,
+        "text": "💬 <b>To'lov admini javob berdi.</b>\n\nOchib, suhbatni davom ettiring.",
+        "parse_mode": "HTML",
+        "reply_markup": _open_app_button(),
+    })
+
+
+def notify_topup_new_message(chat_id, user_name):
+    """Nudge a payment admin (on Telegram) that a user wrote in the web chat."""
+    if not chat_id:
+        return
+    _api("sendMessage", {
+        "chat_id": chat_id,
+        "text": f"💬 <b>{_esc(user_name)}</b> to'lov chatida yozdi. "
+                f"Admin panelда javob bering.",
+        "parse_mode": "HTML",
+    })
+
+
 # ---------------------------------------------------------------- top-ups
 # A payment admin settles a top-up entirely inside Telegram: they are pinged,
 # they take the request, and from then on everything they and the player send
@@ -129,21 +158,17 @@ def _esc(s):
 # can also just type, and the player will usually answer with a photo of the
 # receipt — which is why the relay copies whole messages rather than text.
 def notify_topup_request(chat_id, req_id, name, username, amount_sum, coins, bonus):
-    """Ping an admin that someone wants to buy coins."""
+    """Ping an admin that someone wants to buy coins. The conversation itself now
+    happens in the web admin panel, so this is just a heads-up."""
     who = f"{_esc(name)}" + (f" (@{_esc(username)})" if username else "")
     text = (
         f"💰 <b>Yangi to'lov so'rovi</b>\n\n"
         f"👤 {who}\n"
         f"💵 <b>{_fmt(amount_sum)} so'm</b>\n"
         f"🪙 {_fmt(coins)} coin" + (f"  (+{bonus}% bonus)" if bonus else "") + "\n\n"
-        f"So'rovni olish uchun tugmani bosing."
+        f"Admin panel → «To'lov chat» bo'limida javob bering."
     )
-    _api("sendMessage", {
-        "chat_id": chat_id, "text": text, "parse_mode": "HTML",
-        "reply_markup": {"inline_keyboard": [[
-            {"text": "🤝 Bog'lanish", "callback_data": f"tu:take:{req_id}"}
-        ]]},
-    })
+    _api("sendMessage", {"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
 
 
 def _admin_keyboard(req):
@@ -349,8 +374,15 @@ def webhook(request, secret=""):
     except ValueError:
         return JsonResponse({"ok": True})
 
+    # Top-up conversations moved to the web admin panel, so the old inline
+    # buttons no longer drive anything — answer any stale press politely.
     if update.get("callback_query"):
-        _handle_callback(update["callback_query"])
+        cb = update["callback_query"]
+        _api("answerCallbackQuery", {
+            "callback_query_id": cb.get("id"),
+            "text": "To'lovlar endi admin panelning «To'lov chat» bo'limida.",
+            "show_alert": True,
+        })
         return JsonResponse({"ok": True})
 
     msg = update.get("message") or update.get("edited_message") or {}
@@ -362,11 +394,7 @@ def webhook(request, secret=""):
 
     if text.startswith("/start"):
         _welcome(chat_id, (msg.get("from") or {}).get("first_name", ""))
-        return JsonResponse({"ok": True})
 
-    # Anything else, from either side of a live top-up, is conversation.
-    req, side = _live_request(chat_id)
-    if req:
-        _relay(msg, req, side)
+    return JsonResponse({"ok": True})
 
     return JsonResponse({"ok": True})
