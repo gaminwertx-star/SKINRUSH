@@ -398,21 +398,24 @@ body::after {
    ============================================================ */
 
 /* ---------- PASS 2: the win moment ---------- */
-/* slow radiating light rays behind the revealed skin, tinted by its rarity —
-   the one "big win" flourish, masked so it fades into the card */
-.reveal-box::before {
-  content: ""; position: absolute; left: 50%; top: 6%; z-index: 0;
-  width: 440px; height: 440px; transform: translateX(-50%);
+/* slow radiating light rays centred exactly on the skin, tinted by its rarity —
+   the one "big win" flourish, masked so it fades into the card. Anchored to the
+   skin's own container so the rays always burst from behind the skin, not above it. */
+.reveal__imgwrap::before {
+  content: ""; position: absolute; left: 50%; top: 50%; z-index: -1;
+  width: 420px; height: 420px; transform: translate(-50%, -50%);
   background: repeating-conic-gradient(from 0deg,
     color-mix(in srgb, var(--rc) 26%, transparent) 0deg 5deg, transparent 5deg 17deg);
-  opacity: .16; filter: blur(1px); pointer-events: none;
+  opacity: .18; filter: blur(1px); pointer-events: none;
   -webkit-mask-image: radial-gradient(circle, #000 26%, transparent 66%);
           mask-image: radial-gradient(circle, #000 26%, transparent 66%);
   animation: rev-rays 16s linear infinite;
 }
-@keyframes rev-rays { to { transform: translateX(-50%) rotate(360deg); } }
+@keyframes rev-rays { to { transform: translate(-50%, -50%) rotate(360deg); } }
 .reveal__glow, .reveal__imgwrap, .reveal__tier, .reveal__name,
 .reveal__price, .reveal__details { position: relative; z-index: 1; }
+.reveal__imgwrap { position: relative; }
+.reveal__img { position: relative; z-index: 1; }
 /* the rarity tier badge gets a lit ring so it reads as a "grade" stamp */
 .reveal__tier {
   background: color-mix(in srgb, var(--rc) 14%, transparent);
