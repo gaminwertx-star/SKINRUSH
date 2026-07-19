@@ -18,6 +18,34 @@ const IMG = (h) =>
 const fmt = (n) => Number(n || 0).toLocaleString("ru-RU").replace(/,/g, " ");
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+// short "new message" ding (WebAudio, no asset needed)
+function adminDing() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    const c = new AC(), o = c.createOscillator(), g = c.createGain();
+    o.connect(g); g.connect(c.destination); o.type = "sine";
+    o.frequency.setValueAtTime(880, c.currentTime);
+    o.frequency.setValueAtTime(1174, c.currentTime + 0.09);
+    g.gain.setValueAtTime(0.0001, c.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.14, c.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.4);
+    o.start(); o.stop(c.currentTime + 0.42);
+  } catch (e) {}
+}
+
+// fullscreen image viewer for chat receipts
+let _lb = null;
+function adminLightbox(src) {
+  if (!_lb) {
+    _lb = document.createElement("div"); _lb.className = "tu-lightbox";
+    _lb.innerHTML = "<img alt=''/>";
+    _lb.addEventListener("click", () => _lb.classList.remove("is-open"));
+    document.body.appendChild(_lb);
+  }
+  _lb.querySelector("img").src = src;
+  _lb.classList.add("is-open");
+}
+
 const loginView = document.getElementById("loginView");
 const appView = document.getElementById("appView");
 const main = document.getElementById("main");
@@ -77,8 +105,20 @@ document.getElementById("nav").addEventListener("click", (e) => {
   switchView(btn.dataset.view);
 });
 
+// ---------- mobile drawer ----------
+const VIEW_TITLES = {
+  dashboard: "Dashboard", users: "Foydalanuvchilar", withdraws: "Withdraw so'rovlari",
+  topups: "To'lov chat", payadmins: "To'lov adminlar", promos: "Promokodlar", cases: "Keyslar",
+};
+function setDrawer(open) { document.getElementById("appView").classList.toggle("drawer-open", open); }
+document.getElementById("drawerToggle").addEventListener("click", () => setDrawer(true));
+document.getElementById("drawerBackdrop").addEventListener("click", () => setDrawer(false));
+
 function switchView(view) {
   if (view !== "topups" && typeof stopTuPoll === "function") stopTuPoll();
+  setDrawer(false);                        // close the drawer after picking a page
+  const t = document.getElementById("topbarTitle");
+  if (t) t.textContent = VIEW_TITLES[view] || "";
   document.querySelectorAll(".nav-item").forEach((b) =>
     b.classList.toggle("is-active", b.dataset.view === view)
   );
@@ -89,6 +129,7 @@ function switchView(view) {
   else if (view === "payadmins") renderPayAdmins();
   else if (view === "promos") renderPromos();
   else if (view === "cases") renderCases();
+  else if (view === "audit") renderAudit();
 }
 
 const dt = (s) => (s ? new Date(s).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
@@ -325,14 +366,15 @@ function setTopupBadge(n) {
 
 // ---------- top-up chat inbox (many conversations at once) ----------
 let tuOpenId = null;      // currently open conversation
-let tuSeen = {};          // message ids rendered in the open chat
+let tuSeen = {};          // message id -> rendered element in the open chat
 let tuPoll = null;        // polling timer
+let tuPrevUnread = -1;    // last seen total unread (for the new-message ding)
 
 function stopTuPoll() { if (tuPoll) { clearInterval(tuPoll); tuPoll = null; } }
 
 async function renderTopups() {
   stopTuPoll();
-  tuOpenId = null; tuSeen = {};
+  tuOpenId = null; tuSeen = {}; tuPrevUnread = -1;
   main.innerHTML = `
     <div class="page-head"><div>
       <div class="page-title">To'lov chat</div>
@@ -359,6 +401,9 @@ async function loadTuInbox() {
   setTopupBadge(d.active || 0);
   const badge = document.getElementById("tuBadge");
   if (badge) { badge.textContent = fmt(d.active || 0); badge.hidden = !d.active; }
+  const unread = d.unread || 0;
+  if (tuPrevUnread >= 0 && unread > tuPrevUnread) adminDing();  // a user just wrote
+  tuPrevUnread = unread;
   if (!d.rows.length) {
     list.innerHTML = `<div class="loading">Faol suhbat yo'q.</div>`;
     return;
@@ -380,8 +425,18 @@ async function loadTuInbox() {
     b.addEventListener("click", () => openTuChat(+b.dataset.id)));
 }
 
+function closeTuChat() {
+  tuOpenId = null;
+  const tuc = document.querySelector(".tuc");
+  if (tuc) tuc.classList.remove("chat-open");
+  document.querySelectorAll(".tuc-item").forEach((b) => b.classList.remove("is-active"));
+  const chat = document.getElementById("tucChat");
+  if (chat) chat.innerHTML = `<div class="tuc__empty">Suhbatni tanlang</div>`;
+}
+
 async function openTuChat(id) {
   tuOpenId = id; tuSeen = {};
+  const tuc = document.querySelector(".tuc"); if (tuc) tuc.classList.add("chat-open");
   document.querySelectorAll(".tuc-item").forEach((b) =>
     b.classList.toggle("is-active", +b.dataset.id === id));
   const chat = document.getElementById("tucChat");
@@ -391,6 +446,9 @@ async function openTuChat(id) {
   const open = d.status === "waiting" || d.status === "connected";
   chat.innerHTML = `
     <div class="tuc-head">
+      <button class="tuc-back" id="tucBack" aria-label="Orqaga">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
       <div>
         <div class="tuc-head__name">${esc(d.player.name)}
           ${d.player.username ? `<span class="cell-muted">@${esc(d.player.username)}</span>` : ""}</div>
@@ -419,7 +477,13 @@ async function openTuChat(id) {
         <button class="admin-btn admin-btn--danger" id="tucClose">Suhbatni yopish</button>
         <button class="admin-btn" id="tucPay">✅ Balansni to'ldirish (${fmt(d.coins)})</button>
       </div>` : `<div class="tuc-closed">Suhbat ${d.status === "paid" ? "to'landi ✓" : "yopilgan"}.</div>`}`;
+  const backBtn = document.getElementById("tucBack");
+  if (backBtn) backBtn.addEventListener("click", closeTuChat);
   const bodyEl = document.getElementById("tucBody");
+  bodyEl.addEventListener("click", (e) => {
+    const im = e.target.closest(".tuc-msg__img");
+    if (im) adminLightbox(im.getAttribute("data-full") || im.src);
+  });
   (d.messages || []).forEach((m) => addTuMsg(bodyEl, m));
 
   if (open) {
@@ -440,17 +504,27 @@ async function openTuChat(id) {
   }
 }
 
+function tuTick(read) { return read ? "✓✓" : "✓"; }
 function addTuMsg(bodyEl, m) {
-  if (!bodyEl || tuSeen[m.id]) return;
-  tuSeen[m.id] = 1;
+  if (!bodyEl) return;
+  if (tuSeen[m.id]) {              // already shown → refresh the read tick
+    if (m.sender === "admin") {
+      const tk = tuSeen[m.id].querySelector(".tuc-tick");
+      if (tk) { tk.textContent = tuTick(m.read); tk.classList.toggle("is-read", !!m.read); }
+    }
+    return;
+  }
   const el = document.createElement("div");
   el.className = "tuc-msg tuc-msg--" + m.sender;
   let inner = "";
-  if (m.image) inner += `<a href="${esc(m.image)}" target="_blank" rel="noopener"><img class="tuc-msg__img" src="${esc(m.image)}" alt=""/></a>`;
+  if (m.image) inner += `<img class="tuc-msg__img" src="${esc(m.image)}" alt="" data-full="${esc(m.image)}"/>`;
   if (m.text) inner += `<div class="tuc-msg__text">${esc(m.text).replace(/\n/g, "<br>")}</div>`;
-  inner += `<div class="tuc-msg__at">${esc(m.at)}</div>`;
+  inner += `<div class="tuc-msg__at">${esc(m.at)}`;
+  if (m.sender === "admin") inner += ` <span class="tuc-tick${m.read ? " is-read" : ""}">${tuTick(m.read)}</span>`;
+  inner += `</div>`;
   el.innerHTML = inner;
   bodyEl.appendChild(el);
+  tuSeen[m.id] = el;
   bodyEl.scrollTop = bodyEl.scrollHeight;
 }
 
@@ -770,30 +844,56 @@ rejectConfirm.addEventListener("click", async () => {
 });
 
 // ---------- users ----------
+let uQuery = "", uSort = "new", uFilter = "all";
 async function renderUsers() {
   main.innerHTML = `
-    <div class="page-head">
-      <div>
-        <div class="page-title">Foydalanuvchilar</div>
-        <div class="page-sub">Ro'yxatdan o'tgan barcha o'yinchilar</div>
-      </div>
-      <input class="admin-input" id="userSearch" placeholder="Ism yoki username..." />
+    <div class="page-head"><div>
+      <div class="page-title">Foydalanuvchilar</div>
+      <div class="page-sub">Qidiruv · filtr · saralash</div>
+    </div></div>
+    <div class="u-toolbar">
+      <input class="admin-input" id="userSearch" placeholder="Ism / @username / TG id..." value="${esc(uQuery)}" />
+      <select class="admin-input" id="userSort">
+        <option value="new">Eng yangi</option>
+        <option value="old">Eng eski</option>
+        <option value="rich">Balans ↓</option>
+        <option value="poor">Balans ↑</option>
+        <option value="opens">Ko'p ochgan</option>
+        <option value="active_seen">So'nggi faol</option>
+      </select>
+    </div>
+    <div class="filter-row" id="userFilter">
+      <button class="filter-chip ${uFilter === "all" ? "is-active" : ""}" data-f="all">Barchasi</button>
+      <button class="filter-chip ${uFilter === "active" ? "is-active" : ""}" data-f="active">Aktiv</button>
+      <button class="filter-chip ${uFilter === "banned" ? "is-active" : ""}" data-f="banned">Bloklangan</button>
     </div>
     <div id="usersBody"><div class="loading">Yuklanmoqda…</div></div>`;
   const search = document.getElementById("userSearch");
+  const sort = document.getElementById("userSort");
+  sort.value = uSort;
   let t;
   search.addEventListener("input", () => {
     clearTimeout(t);
-    t = setTimeout(() => loadUsers(search.value.trim()), 200);
+    t = setTimeout(() => { uQuery = search.value.trim(); loadUsers(); }, 200);
   });
-  loadUsers("");
+  sort.addEventListener("change", () => { uSort = sort.value; loadUsers(); });
+  document.getElementById("userFilter").addEventListener("click", (e) => {
+    const b = e.target.closest(".filter-chip"); if (!b) return;
+    uFilter = b.dataset.f;
+    document.querySelectorAll("#userFilter .filter-chip").forEach((c) =>
+      c.classList.toggle("is-active", c.dataset.f === uFilter));
+    loadUsers();
+  });
+  loadUsers();
 }
 
-async function loadUsers(q) {
+async function loadUsers() {
   const body = document.getElementById("usersBody");
-  const users = await jget(`${API}/users/${q ? "?q=" + encodeURIComponent(q) : ""}`);
+  if (!body) return;
+  const qp = `?q=${encodeURIComponent(uQuery)}&sort=${uSort}&filter=${uFilter}`;
+  const users = await jget(`${API}/users/${qp}`);
   if (!users.length) {
-    body.innerHTML = `<div class="loading">Hozircha foydalanuvchi yo'q.</div>`;
+    body.innerHTML = `<div class="loading">Hech narsa topilmadi.</div>`;
     return;
   }
   body.innerHTML = `
@@ -806,7 +906,7 @@ async function loadUsers(q) {
         ${users.map((u) => `
           <tr class="clickable" data-id="${u.id}">
             <td>
-              <div class="cell-name">${esc(u.name)}</div>
+              <div class="cell-name">${esc(u.name)} ${u.is_banned ? '<span class="ban-tag">BLOK</span>' : ""}</div>
               ${u.username ? `<div class="cell-muted" style="font-size:12px">@${esc(u.username)}</div>` : ""}
             </td>
             <td class="coin">${fmt(u.balance)}</td>
@@ -861,6 +961,51 @@ async function renderUserDetail(id) {
       </div>
     </div>
 
+    <div class="a-tools">
+      <div class="a-tool">
+        <div class="a-tool__h">Moderatsiya</div>
+        <div class="a-tool__row">
+          <input class="admin-input" id="banReason" placeholder="Blok sababi (ixtiyoriy)" ${u.is_banned ? "disabled" : ""}/>
+          <button class="admin-btn ${u.is_banned ? "" : "admin-btn--danger"}" id="banBtn">${u.is_banned ? "Blokdan chiqarish" : "Bloklash"}</button>
+        </div>
+        ${u.is_banned ? `<div class="a-banned">⛔ Bloklangan${u.ban_reason ? " — " + esc(u.ban_reason) : ""}</div>` : ""}
+      </div>
+
+      <div class="a-tool">
+        <div class="a-tool__h">Skin berish</div>
+        <input class="admin-input" id="skinSearch" placeholder="Skin qidirish (nom)..." />
+        <div class="a-skinres" id="skinRes"></div>
+      </div>
+
+      <div class="a-tool">
+        <div class="a-tool__h">Bepul keys berish</div>
+        <div class="a-tool__row">
+          <select class="admin-input" id="freeCaseSel"><option value="">Keys tanlang…</option></select>
+          <input class="admin-input a-num" id="freeCaseN" type="number" value="1" min="1" max="20"/>
+          <button class="admin-btn" id="freeCaseBtn">Berish</button>
+        </div>
+      </div>
+
+      <div class="a-tool">
+        <div class="a-tool__h">Telegram xabar</div>
+        <textarea class="admin-input a-area" id="dmText" rows="2" placeholder="Xabar matni..."></textarea>
+        <button class="admin-btn" id="dmBtn" style="margin-top:8px">Yuborish</button>
+      </div>
+
+      <div class="a-tool a-tool--wide">
+        <div class="a-tool__h">Inventar — skin olib qo'yish (${d.inventory.length})</div>
+        <div class="a-inv" id="takeInv">
+          ${d.inventory.length ? d.inventory.map((it) => `
+            <div class="a-invitem" style="--rc:${esc(it.color) || "#555"}">
+              <img src="${IMG(it.image)}" onerror="this.style.visibility='hidden'"/>
+              <div class="a-invitem__b"><div class="a-invitem__n">${esc(it.name)}</div><div class="coin">${fmt(it.price)}</div></div>
+              <button class="a-invitem__x" data-rec="${it.id}" data-name="${esc(it.name)}" title="Olib qo'yish">✕</button>
+            </div>`).join("") : `<div class="cell-muted">Inventar bo'sh</div>`}
+        </div>
+      </div>
+    </div>
+    <div class="give-msg" id="toolMsg"></div>
+
     <div class="section-title">Keys ochish tarixi — qaysi keysdan nima tushgani</div>
     <div class="table-wrap"><div class="table-scroll"><table>
       <thead><tr><th>Sana</th><th>Key</th><th>Tushgan skin</th><th>Holati</th><th>Qiymati</th><th>Noyoblik</th><th>Sotilgan</th></tr></thead>
@@ -912,25 +1057,155 @@ async function renderUserDetail(id) {
   document.querySelectorAll(".give-chip").forEach((b) =>
     b.addEventListener("click", () => { giveAmount.value = b.dataset.amt; giveCoins(+b.dataset.amt); })
   );
+
+  // --- admin tools (ban / give-skin / take-skin / free-case / message) ---
+  const toolMsg = document.getElementById("toolMsg");
+  function tmsg(ok, txt) { toolMsg.className = "give-msg " + (ok ? "is-ok" : "is-err"); toolMsg.textContent = txt; }
+
+  document.getElementById("banBtn").addEventListener("click", async () => {
+    const res = await jpost(`${API}/users/${id}/ban/`,
+      { reason: (document.getElementById("banReason").value || "").trim() });
+    if (res.ok && res.data.ok) renderUserDetail(id); else tmsg(false, (res.data || {}).error || "Xatolik");
+  });
+
+  const skinSearch = document.getElementById("skinSearch");
+  const skinRes = document.getElementById("skinRes");
+  let st;
+  skinSearch.addEventListener("input", () => {
+    clearTimeout(st);
+    st = setTimeout(async () => {
+      const q = skinSearch.value.trim();
+      if (q.length < 2) { skinRes.innerHTML = ""; return; }
+      const items = await jget(`${API}/skins/?q=${encodeURIComponent(q)}`);
+      skinRes.innerHTML = items.map((it) => `
+        <button class="a-skin" data-item="${it.id}" style="--rc:${esc(it.color) || "#555"}">
+          <img src="${IMG(it.image)}" onerror="this.style.visibility='hidden'"/>
+          <span class="a-skin__n">${esc(it.name)}</span><span class="coin">${fmt(it.price)}</span>
+        </button>`).join("");
+      skinRes.querySelectorAll(".a-skin").forEach((b) => b.addEventListener("click", async () => {
+        const r = await jpost(`${API}/users/${id}/give-skin/`, { item_id: +b.dataset.item });
+        if (r.ok && r.data.ok) { tmsg(true, "Skin berildi ✓"); setTimeout(() => renderUserDetail(id), 600); }
+        else tmsg(false, (r.data || {}).error || "Xatolik");
+      }));
+    }, 250);
+  });
+
+  document.getElementById("takeInv").addEventListener("click", (e) => {
+    const b = e.target.closest(".a-invitem__x"); if (!b) return;
+    openConfirm("Skinni olib qo'yish", `«${b.dataset.name}» inventardan o'chiriladi.`, async () => {
+      const r = await jpost(`${API}/users/${id}/take-skin/`, { record_id: +b.dataset.rec });
+      if (r.ok && r.data.ok) { tmsg(true, "Olindi ✓"); setTimeout(() => renderUserDetail(id), 500); }
+      else tmsg(false, (r.data || {}).error || "Xatolik");
+    });
+  });
+
+  (async () => {
+    const cs = await jget(`${API}/cases/`);
+    const sel = document.getElementById("freeCaseSel");
+    if (sel) sel.innerHTML = `<option value="">Keys tanlang…</option>` +
+      cs.map((c) => `<option value="${c.id}">${esc(c.name)} (${fmt(c.price)})</option>`).join("");
+  })();
+  document.getElementById("freeCaseBtn").addEventListener("click", async () => {
+    const cid = +document.getElementById("freeCaseSel").value;
+    if (!cid) { tmsg(false, "Keys tanlang"); return; }
+    const n = +document.getElementById("freeCaseN").value || 1;
+    const r = await jpost(`${API}/users/${id}/free-case/`, { case_id: cid, count: n });
+    if (r.ok && r.data.ok) tmsg(true, "Bepul keys berildi ✓"); else tmsg(false, (r.data || {}).error || "Xatolik");
+  });
+
+  document.getElementById("dmBtn").addEventListener("click", async () => {
+    const text = document.getElementById("dmText").value.trim();
+    if (!text) { tmsg(false, "Xabar bo'sh"); return; }
+    const r = await jpost(`${API}/users/${id}/message/`, { text });
+    if (r.ok && r.data.ok) { tmsg(true, "Yuborildi ✓"); document.getElementById("dmText").value = ""; }
+    else tmsg(false, (r.data || {}).error || "Xatolik");
+  });
+}
+
+// ---------- audit log ----------
+const AUDIT_LABEL = {
+  coins: "💰 Coin", ban: "⛔ Blok", unban: "✅ Blokdan", give_skin: "🎁 Skin berdi",
+  take_skin: "🗑 Skin oldi", free_case: "📦 Bepul keys", message: "✉️ Xabar",
+  broadcast: "📣 Broadcast", case_add: "➕ Keys", case_del: "🗑 Keys o'chirdi",
+  skin_add: "➕ Skin", skin_edit: "✏️ Skin", skin_del: "🗑 Skin",
+};
+async function renderAudit() {
+  main.innerHTML = `
+    <div class="page-head"><div>
+      <div class="page-title">Audit log</div>
+      <div class="page-sub">Admin harakatlari — eng yangisi tepada</div>
+    </div></div>
+    <div id="auditBody"><div class="loading">Yuklanmoqda…</div></div>`;
+  const rows = await jget(`${API}/audit/`);
+  const body = document.getElementById("auditBody");
+  if (!rows.length) { body.innerHTML = `<div class="loading">Hozircha yozuv yo'q.</div>`; return; }
+  body.innerHTML = `
+    <div class="table-wrap"><div class="table-scroll"><table>
+      <thead><tr><th>Vaqt</th><th>Admin</th><th>Amal</th><th>Tafsilot</th></tr></thead>
+      <tbody>
+        ${rows.map((a) => `<tr>
+          <td class="cell-muted">${esc(a.at)}</td>
+          <td>${esc(a.actor)}</td>
+          <td>${AUDIT_LABEL[a.action] || esc(a.action)}</td>
+          <td class="cell-muted">${esc(a.detail)}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table></div></div>`;
 }
 
 // ---------- cases ----------
 let casesCache = [];
+function caseFormHTML(c) {
+  c = c || {};
+  return `
+    <div class="cf-grid">
+      <label class="cf-f"><span>Nomi</span><input class="admin-input" data-cf="name" value="${esc(c.name || "")}" placeholder="Masalan: STRIKE"/></label>
+      <label class="cf-f"><span>Narx (coin)</span><input class="admin-input" data-cf="price" type="number" value="${c.price || ""}" placeholder="5000"/></label>
+      <label class="cf-f cf-f--wide"><span>Rasm URL / Steam hash</span><input class="admin-input" data-cf="image" value="${esc(c.image || "")}" placeholder="https://... yoki hash"/></label>
+      <label class="cf-f"><span>Tartib</span><input class="admin-input" data-cf="sort_order" type="number" value="${c.sort_order || 0}"/></label>
+    </div>`;
+}
+function readForm(scope, attr) {
+  const o = {};
+  scope.querySelectorAll(`[data-${attr}]`).forEach((el) => { o[el.getAttribute(`data-${attr}`)] = el.value.trim(); });
+  return o;
+}
+
 async function renderCases() {
   main.innerHTML = `
     <div class="page-head">
       <div>
         <div class="page-title">Keyslar</div>
-        <div class="page-sub">Barcha keyslar va ularning ichidagi skinlar</div>
+        <div class="page-sub">Keys qo'shish · tahrirlash · o'chirish</div>
       </div>
-      <input class="admin-input" id="caseSearch" placeholder="Key qidirish..." />
+      <button class="admin-btn" id="newCaseBtn">+ Yangi keys</button>
     </div>
+    <div class="cf-panel" id="newCasePanel" hidden>
+      <div class="a-tool__h">Yangi keys qo'shish</div>
+      ${caseFormHTML()}
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="admin-btn" id="newCaseSave">Qo'shish</button>
+        <button class="admin-btn admin-btn--ghost" id="newCaseCancel">Bekor</button>
+        <span class="give-msg" id="newCaseMsg" style="margin:0;align-self:center"></span>
+      </div>
+    </div>
+    <div class="page-head" style="margin:0 0 14px"><input class="admin-input" id="caseSearch" placeholder="Key qidirish..." /></div>
     <div id="casesBody"><div class="loading">Yuklanmoqda…</div></div>`;
   const search = document.getElementById("caseSearch");
   let t;
   search.addEventListener("input", () => {
     clearTimeout(t);
     t = setTimeout(() => loadCases(search.value.trim()), 200);
+  });
+  const panel = document.getElementById("newCasePanel");
+  document.getElementById("newCaseBtn").addEventListener("click", () => { panel.hidden = !panel.hidden; });
+  document.getElementById("newCaseCancel").addEventListener("click", () => { panel.hidden = true; });
+  document.getElementById("newCaseSave").addEventListener("click", async () => {
+    const body = readForm(panel, "cf");
+    const msg = document.getElementById("newCaseMsg");
+    const r = await jpost(`${API}/cases/`, body);
+    if (r.ok && r.data.ok) { panel.hidden = true; loadCases(search.value.trim()); }
+    else { msg.className = "give-msg is-err"; msg.style.margin = "0"; msg.textContent = (r.data || {}).error || "Xatolik"; }
   });
   loadCases("");
 }
@@ -959,10 +1234,25 @@ async function loadCases(q) {
   );
 }
 
+function skinFormHTML(it) {
+  it = it || {};
+  return `
+    <div class="cf-grid">
+      <label class="cf-f cf-f--wide"><span>Skin nomi</span><input class="admin-input" data-sf="name" value="${esc(it.name || "")}" placeholder="AK-47 | Redline"/></label>
+      <label class="cf-f"><span>Ehtimol (%)</span><input class="admin-input" data-sf="chance" type="number" step="0.001" value="${it.chance != null ? it.chance : ""}" placeholder="8.5"/></label>
+      <label class="cf-f"><span>Narx (coin)</span><input class="admin-input" data-sf="price" type="number" value="${it.price != null ? it.price : ""}" placeholder="12000"/></label>
+      <label class="cf-f"><span>Holati (wear)</span><input class="admin-input" data-sf="wear" value="${esc(it.wear || "")}" placeholder="Field-Tested"/></label>
+      <label class="cf-f"><span>Noyoblik</span><input class="admin-input" data-sf="rarity" value="${esc(it.rarity || "")}" placeholder="Covert"/></label>
+      <label class="cf-f"><span>Rang (#hex)</span><input class="admin-input" data-sf="color" value="${esc(it.color || "")}" placeholder="#eb4b4b"/></label>
+      <label class="cf-f cf-f--wide"><span>Rasm (Steam hash / URL)</span><input class="admin-input" data-sf="image" value="${esc(it.image || "")}" placeholder="hash yoki https://..."/></label>
+    </div>`;
+}
+
 async function renderCaseDetail(id) {
   main.innerHTML = `<div class="loading">Yuklanmoqda…</div>`;
   const d = await jget(`${API}/cases/${id}/`);
   const c = d.case;
+  const totalChance = d.items.reduce((s, it) => s + (it.chance || 0), 0);
   main.innerHTML = `
     <button class="back-btn" id="backBtn">‹ Keyslarga qaytish</button>
     <div class="page-head">
@@ -970,29 +1260,134 @@ async function renderCaseDetail(id) {
         <img class="crate-thumb" style="width:70px;height:52px" src="${esc(c.image)}" alt="" onerror="this.style.visibility='hidden'"/>
         <div>
           <div class="page-title">${esc(c.name)}</div>
-          <div class="page-sub"><span class="coin">${fmt(c.price)}</span> · ${c.items_count} skin · ${fmt(c.openings)} ochilgan</div>
+          <div class="page-sub"><span class="coin">${fmt(c.price)}</span> · ${c.items_count} skin · ${fmt(c.openings)} ochilgan · jami ehtimol <b class="${Math.abs(totalChance - 100) < 0.5 ? "pct" : "tu-red"}">${totalChance.toFixed(2)}%</b></div>
         </div>
       </div>
+      <div style="display:flex;gap:8px">
+        <button class="admin-btn admin-btn--ghost" id="editCaseBtn">✏️ Tahrirlash</button>
+        <button class="admin-btn admin-btn--danger" id="delCaseBtn">🗑 O'chirish</button>
+      </div>
     </div>
+
+    <div class="cf-panel" id="editCasePanel" hidden>
+      <div class="a-tool__h">Keysni tahrirlash</div>
+      ${caseFormHTML(c)}
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="admin-btn" id="editCaseSave">Saqlash</button>
+        <button class="admin-btn admin-btn--ghost" id="editCaseCancel">Bekor</button>
+        <span class="give-msg" id="editCaseMsg" style="margin:0;align-self:center"></span>
+      </div>
+    </div>
+
+    <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Skinlar (${c.items_count})</span>
+      <button class="admin-btn" id="addSkinBtn">+ Skin qo'shish</button>
+    </div>
+    <div class="cf-panel" id="addSkinPanel" hidden>
+      ${skinFormHTML()}
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="admin-btn" id="addSkinSave">Qo'shish</button>
+        <button class="admin-btn admin-btn--ghost" id="addSkinCancel">Bekor</button>
+        <span class="give-msg" id="addSkinMsg" style="margin:0;align-self:center"></span>
+      </div>
+    </div>
+
     <div class="table-wrap"><div class="table-scroll"><table>
       <thead><tr>
-        <th>Skin</th><th>Holati</th><th>Ehtimol</th><th>Narx</th><th>Noyoblik</th>
+        <th>Skin</th><th>Holati</th><th>Ehtimol</th><th>Narx</th><th>Noyoblik</th><th></th>
       </tr></thead>
-      <tbody>
-        ${d.items.map((it) => {
-          const ch = it.chance >= 0.1 ? it.chance.toFixed(2) : it.chance.toFixed(3);
-          return `<tr>
-            <td><img class="thumb" src="${IMG(it.image)}" alt="" onerror="this.style.visibility='hidden'"/>
-                <span class="cell-name" style="margin-left:10px">${esc(it.name)}</span></td>
-            <td class="cell-muted">${esc(it.wear || "—")}</td>
-            <td class="pct">${ch}%</td>
-            <td class="coin">${fmt(it.price)}</td>
-            <td><span class="rarity-badge" style="background:${esc(it.color) || "#555"}">${esc(it.rarity || "—")}</span></td>
-          </tr>`;
-        }).join("")}
+      <tbody id="skinRows">
+        ${d.items.map((it) => skinRowHTML(it)).join("")}
       </tbody>
     </table></div></div>`;
+
   document.getElementById("backBtn").addEventListener("click", () => switchView("cases"));
+
+  // edit case
+  const ecp = document.getElementById("editCasePanel");
+  document.getElementById("editCaseBtn").addEventListener("click", () => { ecp.hidden = !ecp.hidden; });
+  document.getElementById("editCaseCancel").addEventListener("click", () => { ecp.hidden = true; });
+  document.getElementById("editCaseSave").addEventListener("click", async () => {
+    const r = await jpost(`${API}/cases/${id}/`, readForm(ecp, "cf"));
+    const m = document.getElementById("editCaseMsg");
+    if (r.ok && r.data.ok) renderCaseDetail(id);
+    else { m.className = "give-msg is-err"; m.style.margin = "0"; m.textContent = (r.data || {}).error || "Xatolik"; }
+  });
+  // delete case
+  document.getElementById("delCaseBtn").addEventListener("click", () => {
+    openConfirm("Keysni o'chirish", `«${c.name}» va uning barcha skinlari o'chiriladi. Bu qaytmas.`, async () => {
+      const r = await jdel(`${API}/cases/${id}/`);
+      if (r.ok) switchView("cases");
+    });
+  });
+  // add skin
+  const asp = document.getElementById("addSkinPanel");
+  document.getElementById("addSkinBtn").addEventListener("click", () => { asp.hidden = !asp.hidden; });
+  document.getElementById("addSkinCancel").addEventListener("click", () => { asp.hidden = true; });
+  document.getElementById("addSkinSave").addEventListener("click", async () => {
+    const r = await jpost(`${API}/cases/${id}/items/`, readForm(asp, "sf"));
+    const m = document.getElementById("addSkinMsg");
+    if (r.ok && r.data.ok) renderCaseDetail(id);
+    else { m.className = "give-msg is-err"; m.style.margin = "0"; m.textContent = (r.data || {}).error || "Xatolik"; }
+  });
+  // per-skin edit / delete (delegated)
+  document.getElementById("skinRows").addEventListener("click", (e) => onSkinRowClick(e, id));
+}
+
+function skinRowHTML(it) {
+  const ch = it.chance >= 0.1 ? it.chance.toFixed(2) : it.chance.toFixed(3);
+  return `<tr data-skin="${it.id}">
+    <td><img class="thumb" src="${IMG(it.image)}" alt="" onerror="this.style.visibility='hidden'"/>
+        <span class="cell-name" style="margin-left:10px">${esc(it.name)}</span></td>
+    <td class="cell-muted">${esc(it.wear || "—")}</td>
+    <td class="pct">${ch}%</td>
+    <td class="coin">${fmt(it.price)}</td>
+    <td><span class="rarity-badge" style="background:${esc(it.color) || "#555"}">${esc(it.rarity || "—")}</span></td>
+    <td style="white-space:nowrap">
+      <button class="s-mini s-edit" data-id="${it.id}" title="Tahrir">✏️</button>
+      <button class="s-mini s-del" data-id="${it.id}" data-name="${esc(it.name)}" title="O'chir">🗑</button>
+    </td>
+  </tr>`;
+}
+
+function onSkinRowClick(e, caseId) {
+  const edit = e.target.closest(".s-edit");
+  const del = e.target.closest(".s-del");
+  if (del) {
+    openConfirm("Skinni o'chirish", `«${del.dataset.name}» keysdan o'chiriladi.`, async () => {
+      const r = await jdel(`${API}/case-items/${del.dataset.id}/`);
+      if (r.ok) renderCaseDetail(caseId);
+    });
+    return;
+  }
+  if (edit) {
+    const id = edit.dataset.id;
+    const row = document.querySelector(`tr[data-skin="${id}"]`);
+    if (row.nextElementSibling && row.nextElementSibling.classList.contains("s-editrow")) {
+      row.nextElementSibling.remove(); return;
+    }
+    // pull current values from the row cells
+    jget(`${API}/cases/${caseId}/`).then((d) => {
+      const it = d.items.find((x) => x.id === +id);
+      const tr = document.createElement("tr");
+      tr.className = "s-editrow";
+      tr.innerHTML = `<td colspan="6"><div class="cf-panel" style="margin:0">
+        ${skinFormHTML(it)}
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="admin-btn" data-save>Saqlash</button>
+          <button class="admin-btn admin-btn--ghost" data-cancel>Bekor</button>
+          <span class="give-msg" data-msg style="margin:0;align-self:center"></span>
+        </div></div></td>`;
+      row.after(tr);
+      tr.querySelector("[data-cancel]").addEventListener("click", () => tr.remove());
+      tr.querySelector("[data-save]").addEventListener("click", async () => {
+        const r = await jpost(`${API}/case-items/${id}/`, readForm(tr, "sf"));
+        const m = tr.querySelector("[data-msg]");
+        if (r.ok && r.data.ok) renderCaseDetail(caseId);
+        else { m.className = "give-msg is-err"; m.style.margin = "0"; m.textContent = (r.data || {}).error || "Xatolik"; }
+      });
+    });
+  }
 }
 
 boot();

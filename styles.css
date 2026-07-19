@@ -172,6 +172,9 @@ body {
 }
 .online__label { color: var(--muted); }
 .online__count { color: #fff; font-weight: 700; }
+.online__sep { color: var(--muted); }
+.online__today { color: var(--muted); }
+.online__today b { color: var(--gold); font-weight: 800; }
 
 /* ---------- LANGUAGE SWITCHER ---------- */
 .lang-wrap { position: relative; }
@@ -1399,15 +1402,18 @@ button.day { font: inherit; -webkit-appearance: none; appearance: none; width: 1
     height: 58px; padding: 0 14px;
     display: grid; grid-template-columns: auto 1fr; align-items: center;
   }
-  .header__left { justify-content: flex-start; gap: 0; min-width: 0; }
+  .header__left { justify-content: flex-start; gap: 10px; min-width: 0; }
   .header__right { gap: 8px; justify-content: flex-end; }
+  /* keep a real, compact live counter next to the logo (dot + online · keys) */
+  .online { font-size: 11.5px; gap: 5px; }
+  .online__label { display: none; }
   .promo-grid, .bonuses { grid-template-columns: minmax(0, 1fr); }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cases-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stat { min-width: 0; }
   .stat__body { min-width: 0; }
   .stat__num, .stat__label { overflow: hidden; text-overflow: ellipsis; }
-  .online, .lang-wrap, .btn--login, .user-chip, .ss-coins-pill { display: none !important; }
+  .lang-wrap, .btn--login, .user-chip, .ss-coins-pill, .hdr-gear { display: none !important; }
   .bal-pill { display: inline-flex; }
   .logo-img--full { display: none; }
   .logo-img { height: 34px; }

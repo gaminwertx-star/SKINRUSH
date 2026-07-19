@@ -32,7 +32,6 @@
               {% if s.filled %}
                 <span class="bt-ava {% if s.won %}is-won{% endif %}">
                   {% if s.photo %}<img src="{{ s.photo }}" alt="" />{% else %}<span class="bt-ava__ph">{{ s.name|slice:':1'|upper }}</span>{% endif %}
-                  <span class="bt-ava__badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1.5 3 4 4.5 4 8a4 4 0 0 1-8 0c0-1 .4-1.8 1-2.5C9 8 9.5 5 12 2z"/></svg>{{ s.streak }}</span>
                 </span>
               {% else %}
                 <span class="bt-ava bt-ava--empty"></span>

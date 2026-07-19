@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from . import i18n
 from .auth_telegram import current_player
-from .models import Drop
+from .models import Drop, Player, TopUpMessage, TopUpRequest
 from .templatetags.skinrush_extras import img as _img
 from .views import get_state
 
@@ -22,6 +22,11 @@ FEED_DELAY_SECONDS = 7
 # The floor for the TOP strip: only genuinely valuable wins belong there.
 TOP_MIN_PRICE = 1_000_000
 TOP_LIMIT = 30
+# The LIVE feed only carries drops worth at least this — cheap "junk" (charms,
+# throwaway skins) is filtered out so the strip reads as real, quality wins.
+FEED_MIN_PRICE = 1_000
+# Players seen within this window count as "online now".
+ONLINE_WINDOW_MIN = 15
 
 
 def _card(d):
@@ -36,12 +41,24 @@ def _card(d):
 
 
 def top_feed(limit=FEED_LIMIT):
-    """The LIVE feed: newest real drops first, every rarity, but only ones old
-    enough that the opener has already seen their reveal (see FEED_DELAY)."""
+    """The LIVE feed: newest real *quality* drops first (>= FEED_MIN_PRICE, so
+    cheap junk is dropped), but only ones old enough that the opener has already
+    seen their reveal (see FEED_DELAY)."""
     cutoff = timezone.now() - timedelta(seconds=FEED_DELAY_SECONDS)
     rows = (Drop.objects.select_related("item", "player")
-            .filter(created_at__lte=cutoff).order_by("-id")[:limit])
+            .filter(created_at__lte=cutoff, item__price__gte=FEED_MIN_PRICE)
+            .order_by("-id")[:limit])
     return [_card(d) for d in rows]
+
+
+def live_stats():
+    """Real, honest activity numbers for the strip counter."""
+    now = timezone.now()
+    return {
+        "online": Player.objects.filter(
+            last_seen__gte=now - timedelta(minutes=ONLINE_WINDOW_MIN)).count(),
+        "today": Drop.objects.filter(created_at__gte=now - timedelta(hours=24)).count(),
+    }
 
 
 def top_expensive(limit=TOP_LIMIT):
@@ -61,13 +78,26 @@ def top_expensive(limit=TOP_LIMIT):
     return out
 
 
+def _chat_state(player):
+    """The player's open top-up conversation for the nav badge, or None."""
+    if not player:
+        return None
+    req = (player.topups.filter(status__in=TopUpRequest.OPEN_STATUSES)
+           .order_by("-created_at").first())
+    if not req:
+        return None
+    unread = req.messages.filter(
+        sender=TopUpMessage.ADMIN, read_by_user=False).count()
+    return {"active": True, "unread": unread, "status": req.status}
+
+
 def site(request):
     lang = i18n.get_lang(request)
     player = current_player(request)
     if player:
         me = {
             "authenticated": True, "name": player.display_name,
-            "photo": player.photo_url, "balance": player.balance,
+            "photo": player.photo, "balance": player.balance,
             "streak": player.streak, "invited": player.invited_count,
             "total_won": player.total_won,
         }
@@ -85,6 +115,8 @@ def site(request):
         "LANGS": [{"code": c, "name": i18n.STRINGS[c]["lang_name"]} for c in i18n.LANGS],
         "ME": me,
         "PLAYER": player,
+        "CHAT": _chat_state(player),
+        # LIVE drops strip (the TOP tab was removed; only LIVE remains).
         "TOP_DROPS": top_feed(),
-        "TOP_EXPENSIVE": top_expensive(),
+        "LIVE_STATS": live_stats(),
     }

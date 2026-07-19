@@ -20,3 +20,6 @@ backend/staticfiles/
 Thumbs.db
 .vscode/
 .idea/
+
+# runtime user uploads (avatars, top-up check photos)
+media/

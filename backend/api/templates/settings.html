@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}Sozlamalar — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="settings">
+  <div class="cases-head">
+    <h2 class="section-title">Sozlamalar</h2>
+  </div>
+
+  <!-- avatar -->
+  <div class="set-card set-card--avatar">
+    <div class="set-avatar">
+      {% if player.photo %}
+        <img class="set-avatar__img" src="{{ player.photo }}" alt="" />
+      {% else %}
+        <div class="set-avatar__ph">{{ player.display_name|first|upper }}</div>
+      {% endif %}
+    </div>
+    <div class="set-avatar__side">
+      <div class="set-card__title">Profil rasmi</div>
+      <div class="set-card__sub">JPG yoki PNG, 8MB gacha.</div>
+      <form method="post" action="{% url 'settings-save' %}" enctype="multipart/form-data" id="setPhotoForm">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="photo" />
+        <input type="file" name="avatar" id="setPhotoInput" accept="image/*" class="set-file" />
+      </form>
+      <div class="set-avatar__acts">
+        <button type="button" class="set-btn set-btn--sm" id="setPhotoPick">Rasm tanlash</button>
+        {% if player.avatar %}
+          <button type="submit" form="setPhotoClear" class="set-btn set-btn--ghost set-btn--sm">Telegram rasmi</button>
+        {% endif %}
+      </div>
+      {% if player.avatar %}
+        <form method="post" action="{% url 'settings-save' %}" id="setPhotoClear">
+          {% csrf_token %}<input type="hidden" name="action" value="photo_clear" />
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- name -->
+  <form class="set-card" method="post" action="{% url 'settings-save' %}">
+    {% csrf_token %}<input type="hidden" name="action" value="name" />
+    <div class="set-card__title">Ism</div>
+    <div class="set-card__sub">Saytda va LIVE lentada ko'rinadigan ismingiz.</div>
+    <div class="set-row">
+      <input class="set-input" type="text" name="first_name" maxlength="120"
+             value="{{ player.display_name }}" required autocomplete="off" />
+      <button class="set-btn" type="submit">Saqlash</button>
+    </div>
+  </form>
+
+  <!-- language -->
+  <div class="set-card">
+    <div class="set-card__title">Til</div>
+    <div class="set-card__sub">Interfeys tili.</div>
+    <div class="set-langs">
+      {% for l in LANGS %}
+        <a class="set-lang {% if l.code == LANG %}is-active{% endif %}"
+           href="{% url 'setlang' l.code %}?next=/sozlamalar/">
+          <span>{{ l.name }}</span>
+          {% if l.code == LANG %}<span class="set-lang__tick">✓</span>{% endif %}
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- steam trade url -->
+  <form class="set-card" method="post" action="{% url 'settings-save' %}">
+    {% csrf_token %}<input type="hidden" name="action" value="trade" />
+    <div class="set-card__title">Steam Trade URL</div>
+    <div class="set-card__sub">Skin yechib olganda avtomatik ishlatiladi — bir marta saqlab qo'ying.</div>
+    <div class="set-row">
+      <input class="set-input" type="text" name="trade_url" inputmode="url"
+             placeholder="https://steamcommunity.com/tradeoffer/new/?partner=…&token=…"
+             value="{{ trade_url }}" autocomplete="off" />
+      <button class="set-btn" type="submit">Saqlash</button>
+    </div>
+    <a class="set-help" href="https://steamcommunity.com/id/me/tradeoffers/privacy" target="_blank" rel="noopener">
+      Trade URL ni qayerdan olaman?
+    </a>
+  </form>
+
+  <!-- sound -->
+  <div class="set-card">
+    <div class="set-row set-row--between">
+      <div>
+        <div class="set-card__title">Ovoz effektlari</div>
+        <div class="set-card__sub">Keys ochilishi, chat va tugma ovozlari.</div>
+      </div>
+      <button type="button" class="set-toggle" id="setSound" role="switch" aria-checked="true">
+        <span class="set-toggle__knob"></span>
+      </button>
+    </div>
+  </div>
+
+</section>
+
+<script>
+  (function () {
+    // photo picker → auto-submit
+    var pick = document.getElementById('setPhotoPick');
+    var input = document.getElementById('setPhotoInput');
+    var form = document.getElementById('setPhotoForm');
+    if (pick && input && form) {
+      pick.addEventListener('click', function () { input.value = ''; input.click(); });
+      input.addEventListener('change', function () { if (input.files.length) form.submit(); });
+    }
+    // sound toggle, synced with the sr_muted flag sounds.js reads
+    var t = document.getElementById('setSound');
+    function isMuted() {
+      return window.SRSound ? SRSound.isMuted() : localStorage.getItem('sr_muted') === '1';
+    }
+    function paint() {
+      var m = isMuted();
+      t.classList.toggle('is-off', m);
+      t.setAttribute('aria-checked', String(!m));
+    }
+    if (t) {
+      paint();
+      t.addEventListener('click', function () {
+        var next = !isMuted();
+        if (window.SRSound) SRSound.setMuted(next);
+        else localStorage.setItem('sr_muted', next ? '1' : '0');
+        paint();
+      });
+    }
+  })();
+</script>
+{% endblock %}

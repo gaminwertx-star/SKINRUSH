@@ -85,6 +85,9 @@
     var action = form ? (form.getAttribute("action") || "") : "";
     if (action.indexOf("/keys/") > -1 && action.indexOf("/ochish/") > -1) return;
     if (action.indexOf("/kontraktlar/create/") > -1) return;
+    // case tiles: no press sound — scrolling the grid on a phone fires pointerdown
+    // on every finger-touch and would click-clack the whole way down.
+    if (el.closest(".case")) return;
     play("click");
   }, true);
 
@@ -101,9 +104,14 @@
     if (document.querySelector(".forge-core.is-done")) {
       playOrArm("contract");
     }
-
-    buildToggle();
+    // The mute control now lives on the Settings page (no floating button).
   }
+
+  // Small API so the Settings page can read/flip mute (takes effect next page).
+  window.SRSound = {
+    isMuted: function () { return muted; },
+    setMuted: function (v) { muted = !!v; try { localStorage.setItem(KEY, muted ? "1" : "0"); } catch (e) {} },
+  };
 
   // ---- mute toggle (floating) ------------------------------------------
   var ON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>';

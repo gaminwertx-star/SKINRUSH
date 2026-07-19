@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% load skinrush_extras %}
 {% block title %}{{ skin.name }} — SKINRUSH{% endblock %}
+{% block backbtn %}{% endblock %}
 {% block content %}
 
 <section class="ivd">
@@ -25,7 +26,7 @@
 
   <!-- owner -->
   {% if owner %}
-    <a class="ivd-owner" href="{% url 'profile' %}">
+    <a class="ivd-owner" href="{% url 'user' owner.id %}">
   {% else %}
     <div class="ivd-owner">
   {% endif %}

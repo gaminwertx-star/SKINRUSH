@@ -120,6 +120,7 @@ STRINGS = {
         "contents_title": "Ushbu keydagi narsalar",
         "again_btn": "Yana ochish", "skip_btn": "Animatsiyani o'tkazish",
         "opening_title": "Ochilmoqda…", "not_enough": "Balans yetarli emas",
+        "short_pre": "Bu keys uchun yana", "short_post": "kerak",
         "claim_btn": "Olish",
         # detail rows
         "row_weapon": "Qurol", "row_finish": "Chizma", "row_wear": "Holati",
@@ -247,6 +248,7 @@ STRINGS = {
         "contents_title": "Содержимое кейса",
         "again_btn": "Открыть ещё раз", "skip_btn": "Пропустить анимацию",
         "opening_title": "Открывается…", "not_enough": "Недостаточно средств",
+        "short_pre": "Для этого кейса не хватает", "short_post": "",
         "claim_btn": "Забрать",
         "row_weapon": "Оружие", "row_finish": "Рисунок", "row_wear": "Состояние",
         "row_float": "Флоат", "row_rarity": "Редкость", "row_value": "Стоимость",
@@ -370,6 +372,7 @@ STRINGS = {
         "close_btn": "Close", "sell_btn": "Sell", "sound": "Sound",
         "again_btn": "Open again", "skip_btn": "Skip animation",
         "opening_title": "Opening…", "not_enough": "Not enough balance",
+        "short_pre": "Need", "short_post": "more for this case",
         "claim_btn": "Claim",
         "contents_title": "Items in this case",
         "row_weapon": "Weapon", "row_finish": "Finish", "row_wear": "Wear",

@@ -122,20 +122,22 @@ def _esc(s):
             .replace("<", "&lt;").replace(">", "&gt;"))
 
 
-def _open_app_button(text="🎮 Ochish"):
-    return {"inline_keyboard": [[{"text": text, "web_app": {"url": APP_URL}}]]}
+def _open_app_button(text="🎮 Ochish", path=""):
+    url = APP_URL.rstrip("/") + "/" + path.lstrip("/")
+    return {"inline_keyboard": [[{"text": text, "web_app": {"url": url}}]]}
 
 
 def notify_topup_admin_reply(chat_id):
     """Nudge a player on Telegram that the admin replied in the site chat, so
-    they open the Mini App to see it even if it was closed."""
+    they open the Mini App straight into the chat even if it was closed."""
     if not chat_id:
         return
     _api("sendMessage", {
         "chat_id": chat_id,
-        "text": "💬 <b>To'lov admini javob berdi.</b>\n\nOchib, suhbatni davom ettiring.",
+        "text": "💬 <b>To'lov admini sizga xabar yubordi.</b>\n\n"
+                "Chatni ochib, suhbatni davom ettiring 👇",
         "parse_mode": "HTML",
-        "reply_markup": _open_app_button(),
+        "reply_markup": _open_app_button("💬 Chatni ochish", "toldirish/"),
     })
 
 
@@ -253,6 +255,13 @@ def _pay(req):
            f"✅ <b>Balansingiz to'ldirildi!</b>\n\n"
            f"🪙 +{_fmt(fresh.coins)} coin\n"
            f"Yangi balans: <b>{_fmt(p.balance)}</b>\n\nO'yin uchun rahmat!")
+    # referral: pay the referrer 5% of this top-up and qualify them if new
+    try:
+        from . import referral
+        referral.qualify(p)
+        referral.topup_share(p, fresh.coins)
+    except Exception:
+        pass
     return None
 
 
@@ -393,8 +402,20 @@ def webhook(request, secret=""):
         return JsonResponse({"ok": True})
 
     if text.startswith("/start"):
-        _welcome(chat_id, (msg.get("from") or {}).get("first_name", ""))
-
-    return JsonResponse({"ok": True})
+        frm = msg.get("from") or {}
+        parts = text.split(maxsplit=1)
+        ref_code = parts[1].strip() if len(parts) > 1 else ""
+        if ref_code:
+            try:
+                from .models import Player
+                from . import referral
+                friend, _ = Player.objects.get_or_create(
+                    telegram_id=chat_id,
+                    defaults={"first_name": frm.get("first_name", ""),
+                              "username": frm.get("username", "")})
+                referral.link_by_code(friend, ref_code)
+            except Exception:
+                pass
+        _welcome(chat_id, frm.get("first_name", ""))
 
     return JsonResponse({"ok": True})

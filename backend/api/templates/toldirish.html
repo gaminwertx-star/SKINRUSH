@@ -33,11 +33,17 @@
         </div>
       </div>
 
+      <div class="tu-quickreply" id="tuQuick">
+        <button type="button" class="tu-qr" data-qr="To'ladim ✅ Chekni yubordim.">To'ladim ✅</button>
+        <button type="button" class="tu-qr" data-qr="Iltimos, karta raqamini yuboring.">Karta raqami?</button>
+        <button type="button" class="tu-qr" data-qr="Qancha vaqtda tushadi?">Qancha vaqtda?</button>
+      </div>
+
       <form class="tu-chat__bar" id="tuChatForm" enctype="multipart/form-data">
-        <label class="tu-chat__clip" title="Rasm biriktirish">
+        <button type="button" class="tu-chat__clip" id="tuChatClip" title="Chek (rasm) biriktirish" aria-label="Rasm biriktirish">
           {% icon "upload" %}
-          <input type="file" id="tuChatImg" accept="image/*" hidden />
-        </label>
+        </button>
+        <input type="file" id="tuChatImg" accept="image/*" class="tu-chat__file" />
         <input class="tu-chat__input" id="tuChatText" placeholder="Xabar yozing…" autocomplete="off" />
         <button class="tu-chat__send" type="submit" aria-label="Yuborish">{% icon "arrow-right" %}</button>
       </form>
@@ -57,50 +63,176 @@
         var form = document.getElementById('tuChatForm');
         var text = document.getElementById('tuChatText');
         var fileIn = document.getElementById('tuChatImg');
-        var imgName = document.getElementById('tuChatImgName');
+        var clip = document.getElementById('tuChatClip');
         var title = document.getElementById('tuChatTitle');
         var hint = document.getElementById('tuChatHint');
-        var seen = {};
+        var quick = document.getElementById('tuQuick');
+        var nodes = {};        // id -> message element (for read-tick updates)
+        var primed = false;    // suppress ding/sound on the first load
         function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+        // ---- ding (WebAudio, no file needed) ----
+        function ding(){
+          try {
+            var AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+            var c=new AC(), o=c.createOscillator(), g=c.createGain();
+            o.connect(g); g.connect(c.destination); o.type='sine';
+            o.frequency.setValueAtTime(880,c.currentTime);
+            o.frequency.setValueAtTime(1174,c.currentTime+0.09);
+            g.gain.setValueAtTime(0.0001,c.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.14,c.currentTime+0.02);
+            g.gain.exponentialRampToValueAtTime(0.0001,c.currentTime+0.4);
+            o.start(); o.stop(c.currentTime+0.42);
+          } catch(e){}
+        }
+
+        // ---- fullscreen image viewer ----
+        var box=null;
+        function lightbox(src){
+          if(!box){
+            box=document.createElement('div'); box.className='tu-lightbox';
+            box.innerHTML='<img alt="" />';
+            box.addEventListener('click',function(){ box.classList.remove('is-open'); });
+            document.body.appendChild(box);
+          }
+          box.querySelector('img').src=src;
+          box.classList.add('is-open');
+        }
+
+        // ---- detect a card number the admin sent → offer a copy button ----
+        function cardIn(t){
+          var m=String(t||'').match(/(?:\d[ \-]?){16,19}/);
+          if(!m) return null;
+          var digits=m[0].replace(/\D/g,'');
+          return (digits.length>=16 && digits.length<=19) ? digits : null;
+        }
+        function grouped(d){ return d.replace(/(.{4})/g,'$1 ').trim(); }
+
+        function tickTxt(read){ return read ? '✓✓' : '✓'; }
         function add(m){
-          if (seen[m.id]) return; seen[m.id]=1;
+          if (nodes[m.id]) {           // already shown → just refresh its tick
+            if (m.sender==='user'){
+              var tk=nodes[m.id].querySelector('.tu-tick');
+              if (tk){ tk.textContent=tickTxt(m.read); tk.classList.toggle('is-read',!!m.read); }
+            }
+            return;
+          }
           if (hint) { hint.remove(); hint=null; }
           var el=document.createElement('div');
           el.className='tu-msg tu-msg--'+m.sender;
           var inner='';
-          if (m.image) inner+='<a href="'+esc(m.image)+'" target="_blank" rel="noopener"><img class="tu-msg__img" src="'+esc(m.image)+'" alt="" /></a>';
+          if (m.image) inner+='<img class="tu-msg__img" src="'+esc(m.image)+'" alt="Chek" data-full="'+esc(m.image)+'" />';
           if (m.text) inner+='<div class="tu-msg__text">'+esc(m.text).replace(/\n/g,'<br>')+'</div>';
-          inner+='<div class="tu-msg__at">'+esc(m.at)+'</div>';
+          if (m.sender==='admin'){
+            var card=cardIn(m.text);
+            if (card) inner+='<button type="button" class="tu-copy" data-card="'+card+'">'+
+              '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'+
+              'Karta raqamini nusxa olish</button>';
+          }
+          inner+='<div class="tu-msg__at">'+esc(m.at);
+          if (m.sender==='user') inner+=' <span class="tu-tick'+(m.read?' is-read':'')+'">'+tickTxt(m.read)+'</span>';
+          inner+='</div>';
           el.innerHTML=inner;
-          body.appendChild(el);
+          body.appendChild(el); nodes[m.id]=el;
           body.scrollTop=body.scrollHeight;
+          if (m.sender==='admin' && primed) ding();
         }
         function poll(){
           fetch('/toldirish/chat/',{credentials:'same-origin',cache:'no-store'})
             .then(function(r){return r.json();})
             .then(function(d){
               (d.messages||[]).forEach(add);
+              primed=true;
               if (d.status && d.status!=='waiting' && d.admin) title.textContent=d.admin;
-              if (d.status==='paid'){ title.textContent='✓ To’landi'; chat.setAttribute('data-status','paid'); }
-              if (d.status==='closed'){ title.textContent='Yopilgan'; }
+              if (d.status==='paid'){ title.textContent='✓ To’landi'; chat.setAttribute('data-status','paid'); if(quick) quick.hidden=true; }
+              if (d.status==='closed'){ title.textContent='Yopilgan'; if(quick) quick.hidden=true; }
             }).catch(function(){});
         }
-        fileIn.addEventListener('change',function(){
-          if (fileIn.files.length){ imgName.hidden=false; imgName.textContent='📎 '+fileIn.files[0].name; }
-          else imgName.hidden=true;
+        function note(msg){
+          var el=document.createElement('div');
+          el.className='tu-chat__note'; el.textContent=msg;
+          body.appendChild(el); body.scrollTop=body.scrollHeight;
+        }
+
+        // ---- shrink big photos before upload (fast on mobile data) ----
+        function compress(file){
+          return new Promise(function(res){
+            if(!/^image\//.test(file.type) || file.size < 700*1024){ res(file); return; }
+            var img=new Image(), url=URL.createObjectURL(file);
+            img.onload=function(){
+              var max=1600, w=img.width, h=img.height;
+              if(w>max||h>max){ if(w>h){ h=Math.round(h*max/w); w=max; } else { w=Math.round(w*max/h); h=max; } }
+              var cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+              cv.getContext('2d').drawImage(img,0,0,w,h);
+              URL.revokeObjectURL(url);
+              try { cv.toBlob(function(b){ res(b && b.size<file.size ? b : file); },'image/jpeg',0.82); }
+              catch(e){ res(file); }
+            };
+            img.onerror=function(){ URL.revokeObjectURL(url); res(file); };
+            img.src=url;
+          });
+        }
+
+        var sending=false;
+        function send(t, f){
+          if (sending) return;
+          if (!t && !f) return;
+          sending=true;
+          if (clip) clip.classList.add('is-busy');
+          var fd=new FormData();
+          fd.append('text', t||'');
+          if (f) fd.append('image', f, (f.name||'check.jpg'));
+          fd.append('csrfmiddlewaretoken','{{ csrf_token }}');
+          fetch('/toldirish/send/',{method:'POST',body:fd,credentials:'same-origin'})
+            .then(function(r){return r.json();})
+            .then(function(d){
+              if (d.message) add(d.message);
+              else if (d.error) note(d.error);
+            })
+            .catch(function(){ note('Yuborilmadi. Internetni tekshirib qayta urining.'); })
+            .then(function(){ sending=false; if (clip) clip.classList.remove('is-busy'); });
+        }
+
+        // image click → lightbox; copy button → clipboard
+        body.addEventListener('click', function(e){
+          var im=e.target.closest('.tu-msg__img');
+          if (im){ lightbox(im.getAttribute('data-full')||im.src); return; }
+          var cp=e.target.closest('.tu-copy');
+          if (cp){
+            var card=cp.getAttribute('data-card');
+            var done=function(){ note('Karta raqami nusxa olindi ✓ ('+grouped(card)+')'); };
+            if (navigator.clipboard && navigator.clipboard.writeText){
+              navigator.clipboard.writeText(card).then(done).catch(function(){
+                var ta=document.createElement('textarea'); ta.value=card; document.body.appendChild(ta);
+                ta.select(); try{document.execCommand('copy');}catch(x){} ta.remove(); done();
+              });
+            } else {
+              var ta=document.createElement('textarea'); ta.value=card; document.body.appendChild(ta);
+              ta.select(); try{document.execCommand('copy');}catch(x){} ta.remove(); done();
+            }
+          }
+        });
+
+        // quick replies
+        if (quick) quick.addEventListener('click', function(e){
+          var b=e.target.closest('.tu-qr'); if(!b) return;
+          send(b.getAttribute('data-qr'), null);
+        });
+
+        // Explicit picker trigger — reliable inside the Telegram in-app browser.
+        if (clip) clip.addEventListener('click', function(){ fileIn.value=''; fileIn.click(); });
+        // Chek tanlangan zahoti darrov yuboriladi (siqib bo'lib).
+        fileIn.addEventListener('change', function(){
+          var f=fileIn.files[0]; if (!f) return;
+          compress(f).then(function(b){ send('', b); });
+          fileIn.value='';
         });
         form.addEventListener('submit',function(e){
           e.preventDefault();
-          var t=text.value.trim(), f=fileIn.files[0];
-          if (!t && !f) return;
-          var fd=new FormData();
-          fd.append('text',t); if (f) fd.append('image',f);
-          fd.append('csrfmiddlewaretoken','{{ csrf_token }}');
-          text.value=''; fileIn.value=''; imgName.hidden=true;
-          fetch('/toldirish/send/',{method:'POST',body:fd,credentials:'same-origin'})
-            .then(function(r){return r.json();})
-            .then(function(d){ if (d.message) add(d.message); })
-            .catch(function(){});
+          var t=text.value.trim();
+          if (!t) return;
+          text.value='';
+          send(t, null);
         });
         poll(); setInterval(function(){ if(!document.hidden) poll(); }, 3000);
       })();

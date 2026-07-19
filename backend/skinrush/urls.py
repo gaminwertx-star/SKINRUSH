@@ -67,6 +67,7 @@ urlpatterns = [
     path("toldirish/create/", pages.toldirish_create, name="toldirish-create"),
     path("toldirish/bekor/", pages.toldirish_cancel, name="toldirish-cancel"),
     path("toldirish/chat/", pages.toldirish_chat, name="toldirish-chat"),
+    path("toldirish/status/", pages.toldirish_status, name="toldirish-status"),
     path("toldirish/send/", pages.toldirish_send, name="toldirish-send"),
     path("kontraktlar/", pages.kontraktlar, name="kontraktlar"),
     path("kontraktlar/create/", pages.kontrakt_play, name="kontrakt-play"),
@@ -74,6 +75,9 @@ urlpatterns = [
     path("promokod/", pages.promocode, name="promocode"),
     path("promokod/faollashtirish/", pages.promocode_redeem, name="promocode-redeem"),
     path("profil/", pages.profile, name="profile"),
+    path("u/<int:pk>/", pages.public_profile, name="user"),
+    path("sozlamalar/", pages.settings_page, name="settings"),
+    path("sozlamalar/saqlash/", pages.settings_save, name="settings-save"),
 
     # ---- auth ----
     path("tg/webapp-login/", pages.webapp_login, name="webapp-login"),

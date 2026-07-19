@@ -10,6 +10,13 @@
   <div class="upg-arena">
     <!-- SOURCE -->
     <div class="upg-slotcol">
+      {% if result %}
+        <div class="upg-card upg-card--big is-picked" style="--rc:{{ result.source.color }}">
+          <div class="upg-card__art"><img src="{{ result.source.img|img }}" alt="" loading="lazy" /></div>
+          <div class="upg-card__name">{{ result.source.name }}</div>
+          <div class="upg-card__val"><img class="coin-img" src="/images/coin.png" alt="" /> {{ result.source.price|fmt }}</div>
+        </div>
+      {% else %}
       <details class="upg-pick2">
         <summary class="upg-pslot">
           {% if from_skin %}
@@ -43,6 +50,7 @@
           </div>
         </div>
       </details>
+      {% endif %}
     </div>
 
     <!-- GAUGE -->
@@ -80,7 +88,7 @@
     <!-- TARGET -->
     <div class="upg-slotcol">
       {% if result %}
-        <div class="upg-card upg-card--big ss-after-spin" style="--rc:{{ result.target.color }}">
+        <div class="upg-card upg-card--big is-picked" style="--rc:{{ result.target.color }}">
           <div class="upg-card__art"><img src="{{ result.target.img|img }}" alt="" loading="lazy" /></div>
           <div class="upg-card__name">{{ result.target.name }}</div>
           <div class="upg-card__val"><img class="coin-img" src="/images/coin.png" alt="" /> {{ result.value|fmt }}</div>
@@ -162,5 +170,13 @@
     {% endif %}
   </div>
 </section>
+
+{% if result %}
+<script>
+  // The gauge spins ~4s, the win/lose verdict appears, we hold it ~1.5s, then
+  // reset to the clean (unselected) upgrade screen for the next round.
+  setTimeout(function () { location.href = "{% url 'upgrade' %}"; }, 5600);
+</script>
+{% endif %}
 
 {% endblock %}

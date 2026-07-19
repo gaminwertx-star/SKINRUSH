@@ -104,6 +104,8 @@ class Player(models.Model):
     username = models.CharField(max_length=64, blank=True)     # Telegram @username / login name
     first_name = models.CharField(max_length=120, blank=True)
     photo_url = models.URLField(max_length=500, blank=True)
+    # A custom avatar uploaded from Settings; when set it wins over the Telegram photo.
+    avatar = models.FileField(upload_to="avatars/%Y/%m/", blank=True, null=True)
     # SKINRUSH account (email/username/phone + password login). Phone is unique
     # so it can be used to log in; null lets Telegram-only players omit it.
     phone = models.CharField(max_length=32, blank=True, null=True, unique=True, db_index=True)
@@ -117,7 +119,18 @@ class Player(models.Model):
     streak = models.IntegerField(default=0)                    # consecutive daily-claim days
     invited_count = models.IntegerField(default=0)             # referred friends
     daily_day = models.IntegerField(default=0)                 # position in the 14-day cycle
-    daily_claimed_date = models.DateField(null=True, blank=True)  # last daily claim
+    daily_claimed_date = models.DateField(null=True, blank=True)  # last daily claim (date)
+    daily_claimed_at = models.DateTimeField(null=True, blank=True)  # last daily claim (24h timer)
+    # Moderation: a banned player cannot open cases, withdraw or top up.
+    is_banned = models.BooleanField(default=False, db_index=True)
+    ban_reason = models.CharField(max_length=200, blank=True)
+    # Referrals
+    ref_code = models.CharField(max_length=16, blank=True, unique=True, null=True, db_index=True)
+    referred_by = models.ForeignKey("self", on_delete=models.SET_NULL, null=True,
+                                    blank=True, related_name="referrals")
+    ref_qualified = models.BooleanField(default=False)   # has this player triggered the join reward
+    ref_earned = models.BigIntegerField(default=0)       # total coins earned from referrals
+    ref_milestone = models.IntegerField(default=0)       # highest invited-milestone paid out
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)  # registered at
     last_seen = models.DateTimeField(auto_now=True)
 
@@ -127,6 +140,16 @@ class Player(models.Model):
     @property
     def display_name(self):
         return self.first_name or self.username or f"tg{self.telegram_id}"
+
+    @property
+    def photo(self):
+        """The avatar to show: the custom upload if present, else the Telegram photo."""
+        if self.avatar:
+            try:
+                return self.avatar.url
+            except Exception:
+                return self.photo_url
+        return self.photo_url
 
     def __str__(self):
         return self.display_name
@@ -478,3 +501,42 @@ class CoinPurchase(models.Model):
 
     def __str__(self):
         return f"+{self.amount} ({self.player})"
+
+
+class AdminAction(models.Model):
+    """Audit log: every mutating admin-panel action, newest first."""
+
+    actor = models.CharField(max_length=64)                    # admin username
+    action = models.CharField(max_length=48, db_index=True)    # short slug
+    detail = models.CharField(max_length=300, blank=True)      # human summary
+    target_player = models.ForeignKey(
+        Player, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="admin_actions")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.actor} · {self.action}"
+
+
+class ReferralEarning(models.Model):
+    """One referral payout to a referrer — powers the stats panel and history."""
+
+    JOIN, TOPUP, MILESTONE = "join", "topup", "milestone"
+    KINDS = [(JOIN, "Do'st qo'shildi"), (TOPUP, "To'lov ulushi"), (MILESTONE, "Bosqich")]
+
+    referrer = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="ref_earnings")
+    referred = models.ForeignKey(Player, on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name="ref_generated")
+    kind = models.CharField(max_length=12, choices=KINDS)
+    amount = models.BigIntegerField(default=0)
+    note = models.CharField(max_length=120, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.referrer} +{self.amount} ({self.kind})"

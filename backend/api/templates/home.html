@@ -39,7 +39,7 @@
         {% endfor %}
       </div>
       <div class="daily__foot">
-        <div class="daily__timer">{{ S.daily_next }} <b>00:00:00</b></div>
+        <div class="daily__timer">{{ S.daily_next }} <b id="dailyTimer" data-secs="{{ daily_secs }}">00:00:00</b></div>
         <button class="btn btn--teal daily__claim" {% if daily_claimed %}disabled{% endif %}>{{ S.daily_claim }}</button>
       </div>
     </form>
@@ -49,20 +49,12 @@
 <!-- USER STATS -->
 <section class="stats stats--user">
   <div class="stat stat--icon">
-    <span class="stat__badge stat__badge--gold"><img class="stat__ic" src="/images/coin.png" alt="" /></span>
-    <div class="stat__body"><div class="stat__num grad-gold">{{ ME.balance|fmt }}</div><div class="stat__label">{{ S.stat_coin }}</div></div>
-  </div>
-  <div class="stat stat--icon">
     <span class="stat__badge stat__badge--violet"><img class="stat__ic" src="/images/icons/calendar.png" alt="" /></span>
     <div class="stat__body"><div class="stat__num grad-violet">{{ ME.streak }}</div><div class="stat__label">{{ S.stat_streak }}</div></div>
   </div>
   <div class="stat stat--icon">
     <span class="stat__badge stat__badge--blue"><img class="stat__ic" src="/images/icons/people.png" alt="" /></span>
     <div class="stat__body"><div class="stat__num grad-blue">{{ ME.invited }}</div><div class="stat__label">{{ S.stat_invited }}</div></div>
-  </div>
-  <div class="stat stat--icon">
-    <span class="stat__badge stat__badge--green"><img class="stat__ic" src="/images/icons/trophy.png" alt="" /></span>
-    <div class="stat__body"><div class="stat__num grad-green">{{ ME.total_won|fmt }}</div><div class="stat__label">{{ S.stat_won }}</div></div>
   </div>
 </section>
 
@@ -97,4 +89,27 @@
   </div>
 </section>
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Real countdown to the next daily claim (24h after the last one).
+  (function () {
+    var el = document.getElementById('dailyTimer');
+    if (!el) return;
+    var secs = parseInt(el.getAttribute('data-secs'), 10) || 0;
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function paint() {
+      var h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
+      el.textContent = pad(h) + ':' + pad(m) + ':' + pad(s);
+    }
+    if (secs <= 0) { el.textContent = '00:00:00'; return; }   // claimable → no reload loop
+    paint();
+    var iv = setInterval(function () {
+      secs--;
+      if (secs <= 0) { clearInterval(iv); el.textContent = '00:00:00'; location.reload(); return; }
+      paint();
+    }, 1000);
+  })();
+</script>
 {% endblock %}

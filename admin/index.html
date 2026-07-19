@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/admin/admin.css?v=4" />
+  <link rel="stylesheet" href="/admin/admin.css?v=8" />
 </head>
 <body>
   <!-- LOGIN -->
@@ -24,6 +24,15 @@
 
   <!-- APP -->
   <div class="app" id="appView" hidden>
+    <!-- mobile top bar (hidden on desktop) -->
+    <header class="topbar">
+      <button class="topbar__burger" id="drawerToggle" aria-label="Menyu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <div class="topbar__logo">SKIN<span>RUSH</span><b>ADMIN</b></div>
+      <span class="topbar__title" id="topbarTitle"></span>
+    </header>
+    <div class="drawer-backdrop" id="drawerBackdrop"></div>
     <aside class="sidebar">
       <div class="sidebar__logo">SKIN<span>RUSH</span></div>
       <div class="sidebar__tag">ADMIN</div>
@@ -39,6 +48,7 @@
         <button class="nav-item" data-view="payadmins">To'lov adminlar</button>
         <button class="nav-item" data-view="promos">Promokodlar</button>
         <button class="nav-item" data-view="cases">Keyslar</button>
+        <button class="nav-item" data-view="audit">Audit log</button>
       </nav>
       <div class="sidebar__foot">
         <div class="sidebar__user"><span class="sidebar__dot"></span><span id="whoami"></span></div>
@@ -75,6 +85,6 @@
     </div>
   </div>
 
-  <script src="/admin/admin.js?v=8"></script>
+  <script src="/admin/admin.js?v=12"></script>
 </body>
 </html>

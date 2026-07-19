@@ -26,11 +26,46 @@
     if (!strip || !live) return;
     var viewport = live.parentElement;
     var STRIP_POLL = 5000;
+    var RARE_PRICE = 100000;   // a drop worth this much flashes the strip + dings
 
     function esc(s) {
       return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
         return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
       });
+    }
+    function numfmt(n) {
+      return String(n == null ? 0 : n).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    }
+    function setStats(online, today) {
+      document.querySelectorAll("[data-online]").forEach(function (e) {
+        if (online != null) e.textContent = numfmt(online);
+      });
+      document.querySelectorAll("[data-today]").forEach(function (e) {
+        if (today != null) e.textContent = numfmt(today);
+      });
+    }
+    function isMuted() {
+      return window.SRSound ? window.SRSound.isMuted()
+                            : localStorage.getItem("sr_muted") === "1";
+    }
+    function ding() {
+      if (isMuted()) return;
+      try {
+        var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+        var c = new AC(), o = c.createOscillator(), g = c.createGain();
+        o.connect(g); g.connect(c.destination); o.type = "triangle";
+        o.frequency.setValueAtTime(1046, c.currentTime);
+        o.frequency.setValueAtTime(1568, c.currentTime + 0.1);
+        g.gain.setValueAtTime(0.0001, c.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.16, c.currentTime + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.5);
+        o.start(); o.stop(c.currentTime + 0.52);
+      } catch (e) {}
+    }
+    function celebrate() {
+      strip.classList.add("is-hot");
+      setTimeout(function () { strip.classList.remove("is-hot"); }, 1400);
+      ding();
     }
 
     function cardHTML(d, fresh) {
@@ -60,6 +95,8 @@
       fetch("/top-drops-feed/", { credentials: "same-origin", cache: "no-store" })
         .then(function (r) { return r.json(); })
         .then(function (data) {
+          // live counter (real online + cases opened)
+          if (data) setStats(data.online, data.today);
           // LIVE: prepend fresh drops at the front
           var drops = data && data.drops;
           if (drops && drops.length) {
@@ -71,6 +108,10 @@
               }).join("");
               live.setAttribute("data-top", newest);
               if (strip.getAttribute("data-mode") === "live") viewport.scrollLeft = 0;
+              // a fresh, genuinely valuable win → flash the strip + ding
+              if (drops[0].id > prevTop && (drops[0].price || 0) >= RARE_PRICE) {
+                celebrate();
+              }
             }
           }
           // TOP: refresh the valuable-wins list (order by price, changes rarely)

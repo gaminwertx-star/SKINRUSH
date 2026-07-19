@@ -5,6 +5,7 @@ Every screen is a real Django page reached by its own URL. All game logic
 runs here on the server and the result is baked into the HTML before it is
 sent; CSS handles the reveal animations. Forms POST back to these views.
 """
+import os
 import random
 import re
 from datetime import timedelta
@@ -120,16 +121,18 @@ def home(request):
     cases = list(qs)
 
     if player:
-        today = timezone.now().date()
-        days, _, claimed_today = _player_daily(player, today)
+        days, _, claimable, daily_secs = _player_daily(player, timezone.now())
+        claimed_today = not claimable
     else:
         claimed_today = request.session.get("daily_claimed", False)
         days = _daily_days(claimed_today)
+        daily_secs = 0
 
     return render(request, "home.html", {
         "ACTIVE": "bonuslar", "cases": cases,
         "q": q, "min": mn or "", "max": mx or "",
         "days": days, "tasks": _tasks(lang), "daily_claimed": claimed_today,
+        "daily_secs": daily_secs,
     })
 
 
@@ -137,22 +140,42 @@ def home(request):
 def daily_claim(request):
     player = current_player(request)
     if player:
-        today = timezone.now().date()
-        if player.daily_claimed_date == today:
-            messages.info(request, "Bugungi sovg'a allaqachon olingan")
+        now = timezone.now()
+        last = player.daily_claimed_at
+        # still inside the 24h cooldown → nothing to claim yet
+        if last and now - last < timedelta(hours=24):
+            messages.info(request, "Keyingi sovg'a hali tayyor emas")
             return redirect("home")
-        if player.daily_claimed_date == today - timedelta(days=1):
+        # consecutive if claimed within the 24–48h window, else the streak resets
+        if last and now - last <= timedelta(hours=48):
             new_day = (player.daily_day % 14) + 1
             player.streak += 1
         else:
             new_day = 1
             player.streak = 1
+
+        # Days 7 and 14 hand out a FREE CASE instead of coins.
+        free_case = None
+        if new_day == 7:
+            free_case = Case.objects.filter(price=5000).order_by("id").first()
+        elif new_day == 14:
+            free_case = Case.objects.filter(price=7000).order_by("id").first()
+
+        player.daily_day = new_day
+        player.daily_claimed_at = now
+        player.daily_claimed_date = now.date()
+        if free_case:
+            FreeCase.objects.create(player=player, case=free_case)
+            player.save(update_fields=["daily_day", "daily_claimed_at",
+                                       "daily_claimed_date", "streak", "last_seen"])
+            messages.success(
+                request, f"🎁 {new_day}-kun sovg'asi: bepul «{free_case.name}» keysi!")
+            return redirect("case", slug=free_case.slug)   # go open it right away
+
         reward = DAILY_DAYS[new_day - 1][1]
         player.balance += reward
-        player.daily_day = new_day
-        player.daily_claimed_date = today
-        player.save(update_fields=["balance", "daily_day", "daily_claimed_date",
-                                   "streak", "last_seen"])
+        player.save(update_fields=["balance", "daily_day", "daily_claimed_at",
+                                   "daily_claimed_date", "streak", "last_seen"])
         messages.success(request, i18n.t(i18n.get_lang(request), "toast_daily").format(n=reward))
         return redirect("home")
 
@@ -171,8 +194,10 @@ def daily_claim(request):
 def top_drops_feed(request):
     """JSON the strip polls to update itself without a page reload — both the
     LIVE feed and the TOP (most expensive) list."""
-    from .context_processors import top_expensive, top_feed
-    return JsonResponse({"drops": top_feed(), "top": top_expensive()})
+    from .context_processors import live_stats, top_feed
+    stats = live_stats()
+    return JsonResponse({"drops": top_feed(),
+                         "online": stats["online"], "today": stats["today"]})
 
 
 def drop_detail(request, pk):
@@ -196,7 +221,7 @@ def drop_detail(request, pk):
             "usd": None,
         },
         "owner_name": owner.display_name if owner else "Anonim",
-        "owner_photo": owner.photo_url if owner else "",
+        "owner_photo": owner.photo if owner else "",
         "owner": owner,
     })
 
@@ -308,6 +333,12 @@ def case_open(request, slug):
         return redirect("case", slug=slug)
 
     player = current_player(request)
+    if player and player.is_banned:
+        messages.error(request, "Hisobingiz bloklangan.")
+        return redirect("case", slug=slug)
+    if player and player.referred_by_id and not player.ref_qualified:
+        from . import referral
+        referral.qualify(player)   # first case open pays the referrer
     # A promo-granted free opening is spent instead of the balance. Claim it
     # under a row lock: two taps must not both find the same grant unused.
     free = None
@@ -764,10 +795,12 @@ def _is_image_upload(f):
 
 
 def _msg_json(m):
+    # `read` = the *other* party has seen this message (drives the ✓ / ✓✓ ticks).
+    read = m.read_by_admin if m.sender == TopUpMessage.USER else m.read_by_user
     return {
         "id": m.id, "sender": m.sender, "text": m.text,
         "image": m.image.url if m.image else None,
-        "at": m.created_at.strftime("%H:%M"),
+        "at": m.created_at.strftime("%H:%M"), "read": read,
     }
 
 
@@ -787,6 +820,25 @@ def toldirish_chat(request):
         "amount_sum": req.amount_sum, "coins": req.coins,
         "admin": req.admin.name if req.admin else None,
         "messages": [_msg_json(m) for m in req.messages.all()],
+    })
+
+
+def toldirish_status(request):
+    """Tiny site-wide poll for the nav badge: is there an open chat, and how
+    many admin messages are still unread. Does NOT mark anything read."""
+    player = current_player(request)
+    if not player:
+        return JsonResponse({"active": False, "unread": 0})
+    req = _active_topup(player)
+    if not req:
+        return JsonResponse({"active": False, "unread": 0})
+    unread = req.messages.filter(
+        sender=TopUpMessage.ADMIN, read_by_user=False).count()
+    last = req.messages.filter(sender=TopUpMessage.ADMIN).order_by("-id").first()
+    return JsonResponse({
+        "active": True, "unread": unread, "status": req.status,
+        "admin": req.admin.name if req.admin else None,
+        "last": (last.text or "📎 Rasm")[:80] if last else "",
     })
 
 
@@ -844,6 +896,9 @@ def toldirish_create(request):
     player = current_player(request)
     if not player:
         return redirect("login")
+    if player.is_banned:
+        messages.error(request, "Hisobingiz bloklangan.")
+        return redirect("toldirish")
     if not player.telegram_id:
         messages.error(request, "To'ldirish uchun Telegram orqali kiring — "
                                 "admin siz bilan Telegramda bog'lanadi.")
@@ -972,6 +1027,9 @@ def withdraw_create(request):
     player = current_player(request)
     if not player:
         return redirect("login")
+    if player.is_banned:
+        messages.error(request, "Hisobingiz bloklangan.")
+        return redirect("inventory")
     rec_id = _int(request.POST.get("record_id"))
     if not player.trade_url:
         return redirect(f"{reverse('withdraw')}?id={rec_id}")
@@ -1106,6 +1164,8 @@ def upgrade_play(request):
         "won": won, "chance": chance, "pct": round(chance * 100),
         "landing": round(landing, 2), "chance_deg": round(chance_deg, 2),
         "target": item_payload(to), "value": to.price,
+        # keep the chosen source skin on screen through the spin
+        "source": _owned_skin_payload(from_item),
     }
     request.session.modified = True
     return redirect("upgrade")
@@ -1405,7 +1465,20 @@ def kontrakt_play(request):
 
 
 def dostlar(request):
-    return render(request, "simple.html", {"ACTIVE": "dostlar"})
+    player = current_player(request)
+    if not player:
+        messages.error(request, "Referal uchun hisobingizga kiring")
+        return redirect("home")
+    from . import referral
+    st = referral.stats(player)
+    bot = os.environ.get("TELEGRAM_BOT_USERNAME", "") or "skin_rush_bot"
+    return render(request, "dostlar.html", {
+        "ACTIVE": "dostlar",
+        "R": st,
+        "link": f"https://t.me/{bot}?start={st['code']}",
+        "board": referral.leaderboard(),
+        "me_id": player.id,
+    })
 
 
 
@@ -1451,7 +1524,7 @@ def profile(request):
                              r.color, r.wear, r.case_name, r.created_at, r.sold)
                    for r in all_opens[:12]]
         prof = {
-            "auth": True, "name": player.display_name, "photo": player.photo_url,
+            "auth": True, "name": player.display_name, "photo": player.photo,
             "handle": player.username or (f"tg{player.telegram_id}" if player.telegram_id else ""),
             "since": player.created_at, "id": player.id,
             "balance": player.balance, "total_won": player.total_won,
@@ -1472,18 +1545,50 @@ def profile(request):
             "streak": st["streak"], "invited": st["invited"],
         }
 
-    xp = (prof["total_won"] + cases_opened * 25 + prof["invited"] * 100
-          + prof["streak"] * 15)
-    level = _level_for(xp)
-
     return render(request, "profile.html", {
-        "ACTIVE": "profil", "P": prof, "level": level,
+        "ACTIVE": "profil", "P": prof,
         "cases_opened": cases_opened, "items_owned": items_owned,
         "inv_value": inv_value, "best_drop": best_drop,
         "history": history,
         "inv_preview": [_hist_row(r["name"], r["image"], r["value"], r["rarity"],
                                   r["color"], r["wear"], r.get("case_name", ""))
                         for r in owned[:6]],
+    })
+
+
+def public_profile(request, pk):
+    """A read-only profile of another player — reached by tapping a drop's owner
+    in the LIVE feed. Shows their public wins, not private controls."""
+    player = Player.objects.filter(pk=pk).first()
+    if not player:
+        return redirect("home")
+    me = current_player(request)
+    if me and me.pk == player.pk:
+        return redirect("profile")           # your own → the editable one
+
+    all_opens = list(player.opens.all().order_by("-created_at"))
+    owned = list(player.opens.filter(sold=False, is_locked=False).order_by("-created_at"))
+    cases_opened = len(all_opens)
+    best = max(all_opens, key=lambda r: r.skin_price, default=None)
+    best_drop = _hist_row(best.skin_name, best.skin_image, best.skin_price, best.rarity,
+                          best.color, best.wear, best.case_name, best.created_at,
+                          best.sold) if best else None
+    history = [_hist_row(r.skin_name, r.skin_image, r.skin_price, r.rarity, r.color,
+                         r.wear, r.case_name, r.created_at, r.sold) for r in all_opens[:12]]
+    prof = {
+        "auth": True, "name": player.display_name, "photo": player.photo,
+        "handle": player.username or (f"tg{player.telegram_id}" if player.telegram_id else ""),
+        "since": player.created_at, "id": player.id,
+        "balance": player.balance, "total_won": player.total_won,
+        "streak": player.streak, "invited": player.invited_count,
+    }
+    return render(request, "profile.html", {
+        "ACTIVE": "", "P": prof, "PUBLIC": True,
+        "cases_opened": cases_opened, "items_owned": len(owned),
+        "inv_value": sum(r.skin_price for r in owned), "best_drop": best_drop,
+        "history": history,
+        "inv_preview": [_hist_row(r.skin_name, r.skin_image, r.skin_price, r.rarity,
+                                  r.color, r.wear, r.case_name) for r in owned[:6]],
     })
 
 
@@ -1724,6 +1829,15 @@ def webapp_login(request):
         player.user = user
     player.save()
 
+    # referral: link via the Mini App start_param (fallback to the bot /start path)
+    ref_code = user_data.get("_start_param", "")
+    if ref_code:
+        try:
+            from . import referral
+            referral.link_by_code(player, ref_code)
+        except Exception:
+            pass
+
     user = player.user
     user.backend = "django.contrib.auth.backends.ModelBackend"
     auth_login(request, user)
@@ -1738,3 +1852,56 @@ def set_lang(request, code):
     if nxt.startswith("/"):
         return redirect(nxt)
     return redirect("home")
+
+
+# ---------------------------------------------------------------- settings
+def settings_page(request):
+    """Account settings: name, avatar, language, Steam trade URL, sound.
+    Auth is via Telegram auto-login, so there is no password/logout here."""
+    player = current_player(request)
+    if not player:
+        return redirect("home")
+    return render(request, "settings.html", {
+        "ACTIVE": "sozlamalar",
+        "player": player,
+        "trade_url": player.trade_url,
+    })
+
+
+@require_POST
+def settings_save(request):
+    player = current_player(request)
+    if not player:
+        return redirect("home")
+    action = request.POST.get("action")
+    if action == "name":
+        name = (request.POST.get("first_name") or "").strip()[:120]
+        if not name:
+            messages.error(request, "Ism bo'sh bo'lishi mumkin emas")
+        else:
+            player.first_name = name
+            player.save(update_fields=["first_name", "last_seen"])
+            messages.success(request, "Ism yangilandi ✓")
+    elif action == "trade":
+        url = (request.POST.get("trade_url") or "").strip()
+        if url and not TRADE_URL_RE.match(url):
+            messages.error(request, "Trade URL noto'g'ri ko'rinishda")
+        else:
+            player.trade_url = url
+            player.save(update_fields=["trade_url", "last_seen"])
+            messages.success(request, "Steam Trade URL saqlandi ✓")
+    elif action == "photo":
+        img = request.FILES.get("avatar")
+        if not img or not _is_image_upload(img):
+            messages.error(request, "Faqat rasm yuklang")
+        elif img.size > 8 * 1024 * 1024:
+            messages.error(request, "Rasm juda katta (8MB dan kam)")
+        else:
+            player.avatar = img
+            player.save(update_fields=["avatar", "last_seen"])
+            messages.success(request, "Profil rasmi yangilandi ✓")
+    elif action == "photo_clear":
+        player.avatar = None
+        player.save(update_fields=["avatar", "last_seen"])
+        messages.info(request, "Rasm Telegram rasmiga qaytarildi")
+    return redirect("settings")

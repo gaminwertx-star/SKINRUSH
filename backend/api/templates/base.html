@@ -7,31 +7,21 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=56" />
-  <link rel="stylesheet" href="/ssr.css?v=46" />
+  <link rel="stylesheet" href="/styles.css?v=58" />
+  <link rel="stylesheet" href="/ssr.css?v=57" />
   <link rel="stylesheet" href="/polish.css?v=22" />
 </head>
 <body>
 
-  <!-- LIVE / TOP DROPS STRIP -->
+  <!-- LIVE DROPS STRIP -->
   <div class="live-strip" id="liveStrip" data-mode="live">
     <div class="live-strip__labels">
       <button class="live-tab live-tab--live is-active" type="button" data-mode="live">LIVE</button>
-      <button class="live-tab live-tab--top" type="button" data-mode="top">TOP</button>
     </div>
     <div class="live-strip__viewport">
-      <!-- LIVE: real drops, newest first -->
+      <!-- real drops, newest first -->
       <div class="live-strip__track" id="topTrack" data-top="{{ TOP_DROPS.0.id }}">
         {% for d in TOP_DROPS %}
-          <a class="drop drop-link" href="{{ d.href }}" style="--rc:{{ d.color }}">
-            <img class="drop__img" src="{{ d.img }}" alt="" loading="lazy" />
-            <div class="drop__name">{{ d.name }}</div>
-          </a>
-        {% endfor %}
-      </div>
-      <!-- TOP: most valuable wins, dearest first -->
-      <div class="live-strip__track" id="topTrackTop" hidden>
-        {% for d in TOP_EXPENSIVE %}
           <a class="drop drop-link" href="{{ d.href }}" style="--rc:{{ d.color }}">
             <img class="drop__img" src="{{ d.img }}" alt="" loading="lazy" />
             <div class="drop__name">{{ d.name }}</div>
@@ -49,14 +39,22 @@
           <img class="logo-img logo-img--full" src="/images/logo.png?v=2" alt="SKIN RUSH" />
           <img class="logo-img logo-img--word" src="/images/logo_word.png?v=1" alt="SKIN RUSH" />
         </a>
-        <div class="online">
+        <div class="online" title="Hozir online · 24 soatda ochilgan keyslar">
           <span class="online__dot"></span>
+          <span class="online__count" data-online>{{ LIVE_STATS.online|fmt }}</span>
           <span class="online__label">{{ S.online }}</span>
-          <span class="online__count">1 284</span>
+          <span class="online__sep">·</span>
+          <span class="online__today"><b data-today>{{ LIVE_STATS.today|fmt }}</b> keys</span>
         </div>
       </div>
 
       <div class="header__right">
+        {% if ME.authenticated %}
+          <a class="hdr-chat" href="{% url 'toldirish' %}" data-chat-btn title="To'lov chat" aria-label="To'lov chat"{% if not CHAT %} hidden{% endif %}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span class="hdr-chat__badge" data-chat-badge{% if not CHAT.unread %} hidden{% endif %}>{{ CHAT.unread }}</span>
+          </a>
+        {% endif %}
         <span class="bal-pill">
           <b class="bal-pill__num">{{ ME.balance|fmt }}</b>
           <img class="coin-img" src="/images/coin.png" alt="" />
@@ -65,36 +63,20 @@
           </a>
         </span>
         {% if ME.authenticated %}
-          <div class="user-chip">
-            <a class="user-chip__link" href="{% url 'profile' %}">
-              {% if ME.photo %}<img class="user-chip__avatar" src="{{ ME.photo }}" alt="" />{% endif %}
-              <div class="user-chip__info">
-                <span class="user-chip__name">{{ ME.name }}</span>
-                <span class="user-chip__coins"><img class="coin-img" src="/images/coin.png" alt="" /> <b>{{ ME.balance|fmt }}</b></span>
-              </div>
-            </a>
-            <form method="post" action="{% url 'logout' %}" class="ss-inline">{% csrf_token %}
-              <button class="user-chip__logout" title="{{ S.logout }}" aria-label="logout">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
-              </button>
-            </form>
-          </div>
+          <a class="hdr-gear" href="{% url 'settings' %}" title="Sozlamalar" aria-label="Sozlamalar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </a>
+          <a class="user-chip" href="{% url 'profile' %}">
+            {% if ME.photo %}<img class="user-chip__avatar" src="{{ ME.photo }}" alt="" />{% endif %}
+            <div class="user-chip__info">
+              <span class="user-chip__name">{{ ME.name }}</span>
+              <span class="user-chip__coins"><img class="coin-img" src="/images/coin.png" alt="" /> <b>{{ ME.balance|fmt }}</b></span>
+            </div>
+          </a>
         {% else %}
           <span class="ss-coins-pill"><img class="coin-img" src="/images/coin.png" alt="" /> <b>{{ ME.balance|fmt }}</b></span>
           <a class="btn btn--login" href="{% url 'login' %}">{{ S.login }}</a>
         {% endif %}
-
-        <details class="ss-lang">
-          <summary class="lang">
-            <span class="lang__code">{{ LANG|upper }}</span>
-            <span class="lang__caret"><svg viewBox="0 0 12 8"><path d="M1 1.5 6 6.5 11 1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-          </summary>
-          <div class="ss-lang__menu">
-            {% for l in LANGS %}
-              <a href="{% url 'setlang' l.code %}?next={{ request.path }}" class="{% if l.code == LANG %}is-active{% endif %}">{{ l.name }}</a>
-            {% endfor %}
-          </div>
-        </details>
       </div>
     </div>
   </header>
@@ -129,6 +111,14 @@
   {% endif %}
 
   <main class="container">
+    {% block backbtn %}
+      {% if ACTIVE != 'bonuslar' %}
+        <button type="button" class="ss-back" id="ssBack" aria-label="Orqaga">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          <span>{{ S.back|cut:"‹ "|default:"Orqaga" }}</span>
+        </button>
+      {% endif %}
+    {% endblock %}
     {% block content %}{% endblock %}
   </main>
 
@@ -202,8 +192,16 @@
       <summary class="mbar__item mbar__menu-sum" aria-label="Menu">
         <span class="mbar__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg></span>
         <span class="mbar__lbl">Menu</span>
+        <span class="mbar__dot" data-chat-dot{% if not CHAT.unread %} hidden{% endif %}></span>
       </summary>
       <div class="mbar__menu-pop">
+        <a class="hdr-menu__item hdr-menu__item--topup" href="{% url 'toldirish' %}">
+          <span class="hdr-menu__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg></span>Balans to'ldirish
+        </a>
+        <a class="hdr-menu__item hdr-menu__item--chat" href="{% url 'toldirish' %}" data-chat-item{% if not CHAT %} hidden{% endif %}>
+          <span class="hdr-menu__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>To'lov chat
+          <span class="hdr-menu__badge" data-chat-badge{% if not CHAT.unread %} hidden{% endif %}>{{ CHAT.unread }}</span>
+        </a>
         <a class="hdr-menu__item {% if ACTIVE == 'bonuslar' %}is-active{% endif %}" href="{% url 'home' %}">
           <span class="hdr-menu__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg></span>Home
         </a>
@@ -219,6 +217,11 @@
         <a class="hdr-menu__item {% if ACTIVE == 'promocode' %}is-active{% endif %}" href="{% url 'promocode' %}">
           <span class="hdr-menu__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.1" fill="currentColor" stroke="none"/></svg></span>Promocode
         </a>
+        {% if ME.authenticated %}
+        <a class="hdr-menu__item {% if ACTIVE == 'sozlamalar' %}is-active{% endif %}" href="{% url 'settings' %}">
+          <span class="hdr-menu__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>Sozlamalar
+        </a>
+        {% endif %}
       </div>
     </details>
   </nav>
@@ -243,8 +246,70 @@
   })();
   </script>
 
-  <script src="/sounds.js?v=3" defer></script>
-  <script src="/live.js?v=6" defer></script>
+  {% if ME.authenticated %}
+  <!-- Site-wide top-up chat badge: keeps the nav in sync and nudges (toast + ding)
+       when the admin replies while the player is on another page. -->
+  <script>
+  (function () {
+    var KEY = 'ss_chat_unread';
+    function all(s){ return document.querySelectorAll(s); }
+    function paint(active, unread){
+      all('[data-chat-btn],[data-chat-item]').forEach(function(e){ e.hidden = !active; });
+      all('[data-chat-badge]').forEach(function(e){ e.textContent = unread; e.hidden = !(unread > 0); });
+      all('[data-chat-dot]').forEach(function(e){ e.hidden = !(unread > 0); });
+    }
+    function ding(){
+      try {
+        var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+        var c = new AC(), o = c.createOscillator(), g = c.createGain();
+        o.connect(g); g.connect(c.destination); o.type = 'sine';
+        o.frequency.setValueAtTime(880, c.currentTime);
+        o.frequency.setValueAtTime(1174, c.currentTime + 0.09);
+        g.gain.setValueAtTime(0.0001, c.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.14, c.currentTime + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.4);
+        o.start(); o.stop(c.currentTime + 0.42);
+      } catch (e) {}
+    }
+    function toast(msg){
+      var t = document.createElement('div'); t.className = 'ss-chat-toast';
+      t.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span></span>';
+      t.querySelector('span').textContent = msg;
+      t.addEventListener('click', function(){ location.href = '/toldirish/'; });
+      document.body.appendChild(t);
+      requestAnimationFrame(function(){ t.classList.add('is-in'); });
+      setTimeout(function(){ t.classList.remove('is-in'); setTimeout(function(){ t.remove(); }, 400); }, 4500);
+    }
+    var onChat = location.pathname.replace(/\/+$/, '') === '/toldirish';
+    var prev = parseInt(sessionStorage.getItem(KEY) || '0', 10);
+    function poll(){
+      fetch('/toldirish/status/', { credentials:'same-origin', cache:'no-store' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          var unread = d.unread || 0, active = !!d.active;
+          paint(active, unread);
+          if (unread > prev && !onChat) { ding(); toast(d.last ? ('Admin: ' + d.last) : 'Admin javob berdi'); }
+          prev = unread; sessionStorage.setItem(KEY, String(unread));
+        }).catch(function(){});
+    }
+    poll();
+    setInterval(function(){ if (!document.hidden) poll(); }, 5000);
+    document.addEventListener('visibilitychange', function(){ if (!document.hidden) poll(); });
+  })();
+  </script>
+  {% endif %}
+
+  <script>
+    (function () {
+      var b = document.getElementById('ssBack');
+      if (b) b.addEventListener('click', function () {
+        if (history.length > 1) history.back(); else location.href = '/';
+      });
+    })();
+  </script>
+
+  <script src="/sounds.js?v=4" defer></script>
+  <script src="/live.js?v=7" defer></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

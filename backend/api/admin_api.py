@@ -19,10 +19,19 @@ from rest_framework.response import Response
 
 from .authentication import CsrfExemptSession
 from .models import (
-    Case, CaseItem, CoinPurchase, Drop, OpenRecord, PaymentAdmin, Player,
-    PromoCode, TopUpMessage, TopUpRequest, WithdrawRequest,
+    AdminAction, Case, CaseItem, CoinPurchase, Drop, FreeCase, OpenRecord,
+    PaymentAdmin, Player, PromoCode, TopUpMessage, TopUpRequest, WithdrawRequest,
 )
-from .telegram_bot import _pay as _credit_topup, notify_topup_admin_reply, notify_withdraw
+from .telegram_bot import (
+    _pay as _credit_topup, notify, notify_topup_admin_reply, notify_withdraw,
+)
+
+
+def _log(request, action, detail="", target=None):
+    """Write one audit-log row for a mutating admin action."""
+    actor = getattr(getattr(request, "user", None), "username", "") or "admin"
+    AdminAction.objects.create(actor=actor, action=action,
+                               detail=detail[:300], target_player=target)
 
 
 def _case_row(c):
@@ -339,9 +348,10 @@ def admin_topups(request):
 
 # ---------- top-up chat (web inbox: many conversations at once) ----------
 def _msg_json(m):
+    read = m.read_by_admin if m.sender == TopUpMessage.USER else m.read_by_user
     return {"id": m.id, "sender": m.sender, "text": m.text,
             "image": m.image.url if m.image else None,
-            "at": m.created_at.strftime("%H:%M")}
+            "at": m.created_at.strftime("%H:%M"), "read": read}
 
 
 def _canned(req, kind):
@@ -523,6 +533,8 @@ def _player_row(p):
         "balance": p.balance,
         "coins_purchased": p.coins_purchased,
         "opens_count": getattr(p, "opens_count", None),
+        "is_banned": p.is_banned,
+        "ban_reason": p.ban_reason,
         "created_at": p.created_at.isoformat(),
         "last_seen": p.last_seen.isoformat(),
     }
@@ -533,10 +545,22 @@ def _player_row(p):
 @permission_classes([IsAdminUser])
 def admin_users(request):
     q = (request.query_params.get("q") or "").strip()
-    qs = Player.objects.annotate(opens_count=Count("opens")).order_by("-created_at")
+    filt = (request.query_params.get("filter") or "all").strip()
+    sort = (request.query_params.get("sort") or "new").strip()
+    qs = Player.objects.annotate(opens_count=Count("opens"))
     if q:
-        qs = qs.filter(first_name__icontains=q) | qs.filter(username__icontains=q)
-    return Response([_player_row(p) for p in qs])
+        qs = (qs.filter(first_name__icontains=q) | qs.filter(username__icontains=q)
+              | qs.filter(telegram_id__icontains=q))
+    if filt == "banned":
+        qs = qs.filter(is_banned=True)
+    elif filt == "active":
+        qs = qs.filter(is_banned=False)
+    order = {
+        "new": "-created_at", "old": "created_at",
+        "rich": "-balance", "poor": "balance",
+        "active_seen": "-last_seen", "opens": "-opens_count",
+    }.get(sort, "-created_at")
+    return Response([_player_row(p) for p in qs.order_by(order)[:400]])
 
 
 @api_view(["GET"])
@@ -558,10 +582,17 @@ def admin_user_detail(request, pk):
         {"amount": c.amount, "note": c.note, "created_at": c.created_at.isoformat()}
         for c in p.purchases.all()[:100]
     ]
+    inventory = [
+        {"id": o.id, "name": o.skin_name, "image": o.skin_image, "price": o.skin_price,
+         "rarity": o.rarity, "color": o.color, "wear": o.wear}
+        for o in p.opens.filter(sold=False, is_locked=False).order_by("-created_at")[:200]
+    ]
     won_total = p.opens.aggregate(s=Sum("skin_price"))["s"] or 0
     return Response({
         "player": _player_row(p),
         "opens": opens,
+        "inventory": inventory,
+        "free_cases": p.free_cases.filter(used=False).count(),
         "purchases": purchases,
         "totals": {"opens": len(opens), "won_value": won_total,
                    "purchased": p.coins_purchased},
@@ -591,34 +622,268 @@ def admin_give_coins(request, pk):
     p.balance = max(0, p.balance)   # never go negative
     p.save(update_fields=["balance", "coins_purchased", "last_seen"])
     CoinPurchase.objects.create(player=p, amount=amount, note=note)
+    _log(request, "coins", f"{'+' if amount > 0 else ''}{amount} coin → {p.display_name}", p)
     return Response({"ok": True, "balance": p.balance,
                      "coins_purchased": p.coins_purchased})
 
 
+@api_view(["POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_user_ban(request, pk):
+    """Toggle a player's ban. Banned players can't open cases, withdraw or top up."""
+    p = Player.objects.filter(pk=pk).first()
+    if p is None:
+        return Response({"error": "Topilmadi"}, status=404)
+    p.is_banned = not p.is_banned
+    p.ban_reason = (request.data.get("reason") or "").strip()[:200] if p.is_banned else ""
+    p.save(update_fields=["is_banned", "ban_reason"])
+    _log(request, "ban" if p.is_banned else "unban",
+         f"{p.display_name}" + (f" — {p.ban_reason}" if p.ban_reason else ""), p)
+    if p.is_banned and p.telegram_id:
+        notify(p.telegram_id, "⛔️ Hisobingiz bloklandi." +
+               (f"\nSabab: {p.ban_reason}" if p.ban_reason else ""))
+    return Response({"ok": True, "is_banned": p.is_banned, "ban_reason": p.ban_reason})
+
+
+@api_view(["POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_give_skin(request, pk):
+    """Drop a catalog skin (a CaseItem) straight into a player's inventory."""
+    p = Player.objects.filter(pk=pk).first()
+    if p is None:
+        return Response({"error": "Topilmadi"}, status=404)
+    it = CaseItem.objects.select_related("case").filter(pk=request.data.get("item_id")).first()
+    if it is None:
+        return Response({"error": "Skinni tanlang"}, status=400)
+    rec = OpenRecord.objects.create(
+        player=p, case=it.case, case_name=it.case.name if it.case else "Admin",
+        skin_name=it.name, skin_image=it.image, skin_price=it.price,
+        rarity=it.rarity, color=it.color, wear=it.wear, source=OpenRecord.SRC_SHOP)
+    _log(request, "give_skin", f"«{it.name}» ({it.price}) → {p.display_name}", p)
+    return Response({"ok": True, "record_id": rec.id})
+
+
+@api_view(["POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_take_skin(request, pk):
+    """Remove a skin (an OpenRecord) from a player's inventory."""
+    p = Player.objects.filter(pk=pk).first()
+    if p is None:
+        return Response({"error": "Topilmadi"}, status=404)
+    rec = p.opens.filter(pk=request.data.get("record_id")).first()
+    if rec is None:
+        return Response({"error": "Skin topilmadi"}, status=404)
+    name = rec.skin_name
+    rec.delete()
+    _log(request, "take_skin", f"«{name}» ← {p.display_name}", p)
+    return Response({"ok": True})
+
+
+@api_view(["POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_give_free_case(request, pk):
+    """Grant a player a free opening of a case (like the daily reward)."""
+    p = Player.objects.filter(pk=pk).first()
+    if p is None:
+        return Response({"error": "Topilmadi"}, status=404)
+    case = Case.objects.filter(pk=request.data.get("case_id")).first()
+    if case is None:
+        return Response({"error": "Keysni tanlang"}, status=400)
+    try:
+        n = max(1, min(20, int(request.data.get("count") or 1)))
+    except (TypeError, ValueError):
+        n = 1
+    FreeCase.objects.bulk_create([FreeCase(player=p, case=case) for _ in range(n)])
+    _log(request, "free_case", f"{n}× «{case.name}» → {p.display_name}", p)
+    if p.telegram_id:
+        notify(p.telegram_id, f"🎁 Sizga {n} ta bepul «{case.name}» keysi berildi!")
+    return Response({"ok": True})
+
+
+@api_view(["POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_message_user(request, pk):
+    """Send a one-off Telegram message to a player."""
+    p = Player.objects.filter(pk=pk).first()
+    if p is None:
+        return Response({"error": "Topilmadi"}, status=404)
+    text = (request.data.get("text") or "").strip()[:1500]
+    if not text:
+        return Response({"error": "Xabar bo'sh"}, status=400)
+    if not p.telegram_id:
+        return Response({"error": "Bu foydalanuvchida Telegram yo'q"}, status=400)
+    notify(p.telegram_id, f"✉️ <b>Admin:</b>\n{text}")
+    _log(request, "message", f"→ {p.display_name}: {text[:60]}", p)
+    return Response({"ok": True})
+
+
 @api_view(["GET"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_audit(request):
+    """The audit log — every mutating admin action, newest first."""
+    rows = AdminAction.objects.all()[:300]
+    return Response([{
+        "actor": a.actor, "action": a.action, "detail": a.detail,
+        "player_id": a.target_player_id,
+        "at": a.created_at.strftime("%d.%m %H:%M"),
+    } for a in rows])
+
+
+@api_view(["GET"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_skin_search(request):
+    """Catalog skin picker for 'give skin' — search CaseItems by name."""
+    q = (request.query_params.get("q") or "").strip()
+    qs = CaseItem.objects.all()
+    if q:
+        qs = qs.filter(name__icontains=q)
+    return Response([
+        {"id": it.id, "name": it.name, "price": it.price, "image": it.image,
+         "rarity": it.rarity, "color": it.color, "wear": it.wear}
+        for it in qs.order_by("-price")[:40]
+    ])
+
+
+def _num(v, default=0, cast=int):
+    try:
+        return cast(v)
+    except (TypeError, ValueError):
+        return default
+
+
+@api_view(["GET", "POST"])
 @authentication_classes([CsrfExemptSession])
 @permission_classes([IsAdminUser])
 def admin_cases(request):
-    q = (request.query_params.get("q") or "").strip()
-    qs = Case.objects.annotate(n_items=Count("items")).order_by("sort_order", "price")
-    if q:
-        qs = qs.filter(name__icontains=q)
-    return Response([_case_row(c) for c in qs])
+    if request.method == "GET":
+        q = (request.query_params.get("q") or "").strip()
+        qs = Case.objects.annotate(n_items=Count("items")).order_by("sort_order", "price")
+        if q:
+            qs = qs.filter(name__icontains=q)
+        return Response([_case_row(c) for c in qs])
+
+    # ---- create a case ----
+    name = (request.data.get("name") or "").strip()
+    if not name:
+        return Response({"error": "Keys nomini yozing"}, status=400)
+    if Case.objects.filter(name=name).exists():
+        return Response({"error": "Bunday nomli keys bor"}, status=400)
+    price = _num(request.data.get("price"), 0)
+    if price <= 0:
+        return Response({"error": "Narxni to'g'ri kiriting"}, status=400)
+    c = Case.objects.create(
+        name=name, price=price,
+        image=(request.data.get("image") or "").strip(),
+        is_new=bool(request.data.get("is_new")),
+        sort_order=_num(request.data.get("sort_order"), 0))
+    c.n_items = 0
+    _log(request, "case_add", f"«{name}» ({price})")
+    return Response({"ok": True, "row": _case_row(c)})
 
 
-@api_view(["GET"])
+@api_view(["GET", "POST", "DELETE"])
 @authentication_classes([CsrfExemptSession])
 @permission_classes([IsAdminUser])
 def admin_case_detail(request, pk):
-    case = Case.objects.filter(pk=pk).annotate(n_items=Count("items")).first()
+    case = Case.objects.filter(pk=pk).first()
     if case is None:
         return Response({"error": "Topilmadi"}, status=404)
-    items = [
-        {
-            "id": it.id, "name": it.name, "weapon": it.weapon, "finish": it.finish,
-            "wear": it.wear, "chance": it.chance, "price": it.price,
-            "rarity": it.rarity, "color": it.color, "image": it.image,
-        }
-        for it in case.items.all().order_by("chance")
-    ]
+
+    if request.method == "DELETE":
+        name = case.name
+        case.delete()
+        _log(request, "case_del", f"«{name}»")
+        return Response({"ok": True})
+
+    if request.method == "POST":
+        name = (request.data.get("name") or "").strip()
+        if not name:
+            return Response({"error": "Keys nomini yozing"}, status=400)
+        if Case.objects.filter(name=name).exclude(pk=pk).exists():
+            return Response({"error": "Bunday nomli keys bor"}, status=400)
+        case.name = name
+        case.price = _num(request.data.get("price"), case.price)
+        if "image" in request.data:
+            case.image = (request.data.get("image") or "").strip()
+        if "sort_order" in request.data:
+            case.sort_order = _num(request.data.get("sort_order"), case.sort_order)
+        if "is_new" in request.data:
+            case.is_new = bool(request.data.get("is_new"))
+        case.save()
+        _log(request, "case_edit", f"«{case.name}»")
+        case.n_items = case.items.count()
+        return Response({"ok": True, "row": _case_row(case)})
+
+    case = Case.objects.filter(pk=pk).annotate(n_items=Count("items")).first()
+    items = [_item_row(it) for it in case.items.all().order_by("chance")]
     return Response({"case": _case_row(case), "items": items})
+
+
+def _item_row(it):
+    return {
+        "id": it.id, "name": it.name, "weapon": it.weapon, "finish": it.finish,
+        "wear": it.wear, "chance": it.chance, "price": it.price,
+        "rarity": it.rarity, "color": it.color, "image": it.image,
+    }
+
+
+@api_view(["POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_case_items(request, pk):
+    """Add a skin to a case."""
+    case = Case.objects.filter(pk=pk).first()
+    if case is None:
+        return Response({"error": "Keys topilmadi"}, status=404)
+    name = (request.data.get("name") or "").strip()
+    if not name:
+        return Response({"error": "Skin nomini yozing"}, status=400)
+    chance = _num(request.data.get("chance"), -1, float)
+    if chance <= 0:
+        return Response({"error": "Ehtimol (%) 0 dan katta bo'lsin"}, status=400)
+    it = CaseItem.objects.create(
+        case=case, name=name,
+        weapon=(request.data.get("weapon") or "").strip(),
+        finish=(request.data.get("finish") or "").strip(),
+        wear=(request.data.get("wear") or "").strip(),
+        chance=chance, price=_num(request.data.get("price"), 0),
+        rarity=(request.data.get("rarity") or "").strip(),
+        color=(request.data.get("color") or "").strip(),
+        image=(request.data.get("image") or "").strip())
+    _log(request, "skin_add", f"«{name}» → {case.name}")
+    return Response({"ok": True, "item": _item_row(it)})
+
+
+@api_view(["POST", "DELETE"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_case_item_detail(request, pk):
+    """Edit or delete one skin in a case."""
+    it = CaseItem.objects.select_related("case").filter(pk=pk).first()
+    if it is None:
+        return Response({"error": "Topilmadi"}, status=404)
+    if request.method == "DELETE":
+        name = it.name
+        it.delete()
+        _log(request, "skin_del", f"«{name}»")
+        return Response({"ok": True})
+    for f in ("name", "weapon", "finish", "wear", "rarity", "color", "image"):
+        if f in request.data:
+            setattr(it, f, (request.data.get(f) or "").strip())
+    if "chance" in request.data:
+        ch = _num(request.data.get("chance"), it.chance, float)
+        if ch <= 0:
+            return Response({"error": "Ehtimol (%) 0 dan katta bo'lsin"}, status=400)
+        it.chance = ch
+    if "price" in request.data:
+        it.price = _num(request.data.get("price"), it.price)
+    it.save()
+    _log(request, "skin_edit", f"«{it.name}»")
+    return Response({"ok": True, "item": _item_row(it)})

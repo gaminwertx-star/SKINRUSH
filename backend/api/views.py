@@ -162,7 +162,7 @@ def me(request):
     if player:
         return Response({
             "authenticated": True, "name": player.display_name,
-            "photo": player.photo_url, "balance": player.balance,
+            "photo": player.photo, "balance": player.balance,
             "streak": player.streak, "invited": player.invited_count,
             "total_won": player.total_won,
         })
@@ -324,23 +324,16 @@ def _seat_of(player, seat_index):
         "seat": seat_index,
         "player_id": player.id,
         "name": player.display_name,
-        "photo": player.photo_url or "",
+        "photo": player.photo or "",
         "streak": player.streak or 0,
     }
 
 
-def _resolve_battle(battle):
-    """Every seated player opens the same rounds; the highest total drop value
-    wins ALL the dropped skins (they land in the winner's inventory). Idempotent
-    via battle.paid, so a double-join can't pay out twice."""
-    if battle.paid:
-        return
-    uniq = {c.id: c for c in Case.objects.filter(id__in=set(battle.case_ids))}
-    ordered = [uniq[cid] for cid in battle.case_ids if cid in uniq]
-    items_by_case = {cid: list(c.items.all()) for cid, c in uniq.items()}
-
-    results = []
-    for s in battle.seats or []:
+def _draw_battle_seats(seats, ordered, items_by_case):
+    """One full battle draw: every seat opens the same rounds. Returns
+    (results, grand_total)."""
+    results, grand = [], 0
+    for s in seats:
         owner = {"name": s.get("name", ""), "photo": s.get("photo", "")}
         drops, total = [], 0
         for c in ordered:
@@ -357,9 +350,26 @@ def _resolve_battle(battle):
             "name": s.get("name", ""), "photo": s.get("photo", ""),
             "streak": s.get("streak", 0), "drops": drops, "total": total,
         })
+        grand += total
+    return results, grand
 
+
+def _resolve_battle(battle):
+    """Every seated player opens the same rounds; skins drop naturally at random,
+    and the player who collects the HIGHEST total drop value wins ALL the dropped
+    skins. No payout cap — a lucky battle can pay out more than the pot.
+    Idempotent via battle.paid."""
+    if battle.paid:
+        return
+    uniq = {c.id: c for c in Case.objects.filter(id__in=set(battle.case_ids))}
+    ordered = [uniq[cid] for cid in battle.case_ids if cid in uniq]
+    items_by_case = {cid: list(c.items.all()) for cid, c in uniq.items()}
+    seats = battle.seats or []
+
+    results, grand = _draw_battle_seats(seats, ordered, items_by_case)
+    # The winner is the seat that collected the most value.
     winner_index = max(range(len(results)), key=lambda i: results[i]["total"]) if results else 0
-    pot = sum(r["total"] for r in results)
+    pot = grand
 
     battle.winner_index = winner_index
     battle.pot = pot
@@ -454,18 +464,25 @@ def _seconds_to_midnight():
     return int((nxt - now).total_seconds())
 
 
-def _player_daily(player, today):
-    """Real per-player day states: (days, active_day, claimed_today)."""
-    claimed_today = player.daily_claimed_date == today
-    if claimed_today:
-        last_day, active_day = player.daily_day, None
-    elif player.daily_claimed_date == today - timedelta(days=1):
-        last_day, active_day = player.daily_day, (player.daily_day % 14) + 1
+def _player_daily(player, now):
+    """Per-player state for the rolling 24h streak:
+    (days, active_day, claimable, seconds_to_next).
+
+    A claim opens a 24h cooldown. Claiming again inside the next 24h window keeps
+    the streak; letting more than 48h pass since the last claim resets it to 0.
+    """
+    last = player.daily_claimed_at
+    if last is None or now - last > timedelta(hours=48):
+        streak_day, active_day = 0, 1            # never claimed / missed a day
+    elif now - last >= timedelta(hours=24):
+        streak_day, active_day = player.daily_day, (player.daily_day % 14) + 1
     else:
-        last_day, active_day = 0, 1
+        streak_day, active_day = player.daily_day, None   # still on cooldown
+    claimable = active_day is not None
+    secs = 0 if claimable else int((last + timedelta(hours=24) - now).total_seconds())
     days = []
     for d, r, base in DAILY_DAYS:
-        if d <= last_day:
+        if d <= streak_day:
             state = "claimed"
         elif d == active_day:
             state = "active"
@@ -474,7 +491,7 @@ def _player_daily(player, today):
         else:
             state = "locked"
         days.append({"d": d, "r": r, "state": state})
-    return days, active_day, claimed_today
+    return days, active_day, claimable, secs
 
 
 @api_view(["GET"])
@@ -482,10 +499,9 @@ def daily(request):
     lang = i18n.get_lang(request)
     player = current_player(request)
     if player:
-        today = timezone.now().date()
-        days, _, claimed_today = _player_daily(player, today)
+        days, _, claimable, secs = _player_daily(player, timezone.now())
         return Response({"days": days, "tasks": _daily_tasks(lang),
-                         "timer_seconds": _seconds_to_midnight(), "claimed": claimed_today})
+                         "timer_seconds": secs, "claimed": not claimable})
     claimed = request.session.get("daily_claimed", False)
     return Response({"days": _daily_days(claimed), "tasks": _daily_tasks(lang),
                      "timer_seconds": DAILY_TIMER_SECONDS, "claimed": claimed})

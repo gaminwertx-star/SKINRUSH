@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}Do'stlar — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="ref">
+  <div class="ref-hero">
+    <div class="ref-hero__glow"></div>
+    <h1 class="ref-hero__title">Do'stlarni taklif qiling</h1>
+    <p class="ref-hero__sub">
+      Har bir do'st o'ynay boshlaganda <b class="ref-gold">+{{ R.join_reward|fmt }}</b> coin,
+      va ular balans to'ldirsa — har to'lovdan <b class="ref-gold">{{ R.share_pct }}%</b> umrbod sizga.
+    </p>
+  </div>
+
+  <!-- link + code + share -->
+  <div class="ref-card">
+    <div class="ref-card__label">Sizning taklif havolangiz</div>
+    <div class="ref-link" id="refLink" data-link="{{ link }}">{{ link }}</div>
+    <div class="ref-actions">
+      <button type="button" class="ref-btn ref-btn--main" id="refShare">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+        Telegramda ulashish
+      </button>
+      <button type="button" class="ref-btn" id="refCopy">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Nusxa olish
+      </button>
+    </div>
+    <div class="ref-code">Kod: <b id="refCode">{{ R.code }}</b></div>
+    <div class="ref-note" id="refNote" hidden></div>
+  </div>
+
+  <!-- stats -->
+  <div class="ref-stats">
+    <div class="ref-stat"><div class="ref-stat__num">{{ R.invited|fmt }}</div><div class="ref-stat__lbl">Taklif qilingan</div></div>
+    <div class="ref-stat"><div class="ref-stat__num">{{ R.total|fmt }}</div><div class="ref-stat__lbl">Ulangan</div></div>
+    <div class="ref-stat"><div class="ref-stat__num ref-gold">{{ R.earned|fmt }} <img class="coin-img" src="/images/coin.png" alt=""/></div><div class="ref-stat__lbl">Ishlangan</div></div>
+  </div>
+
+  <!-- milestones -->
+  <div class="ref-card">
+    <div class="ref-card__label">Bosqichli mukofotlar</div>
+    <div class="ref-miles">
+      {% for m in R.milestones %}
+        <div class="ref-mile {% if R.invited >= m.0 %}is-done{% endif %}">
+          <div class="ref-mile__count">{{ m.0 }} do'st</div>
+          <div class="ref-mile__bonus">+{{ m.1|fmt }} <img class="coin-img" src="/images/coin.png" alt=""/></div>
+          {% if R.invited >= m.0 %}<span class="ref-mile__tick">✓</span>{% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- friends -->
+  <div class="ref-card">
+    <div class="ref-card__label">Sizning do'stlaringiz ({{ R.total|fmt }})</div>
+    {% if R.friends %}
+      <div class="ref-friends">
+        {% for f in R.friends %}
+          <div class="ref-friend">
+            <span class="ref-friend__ava">
+              {% if f.photo %}<img src="{{ f.photo }}" alt=""/>{% else %}<span class="ref-friend__ph">{{ f.name|first|upper }}</span>{% endif %}
+            </span>
+            <span class="ref-friend__name">{{ f.name }}</span>
+            {% if f.qualified %}<span class="ref-friend__badge is-ok">Faol</span>{% else %}<span class="ref-friend__badge">Kutilmoqda</span>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="ref-empty">Hali do'st taklif qilmadingiz. Havolani ulashing!</div>
+    {% endif %}
+  </div>
+
+  <!-- leaderboard -->
+  <div class="ref-card">
+    <div class="ref-card__label">🏆 Referal reytingi</div>
+    <div class="ref-board">
+      {% for b in board %}
+        <div class="ref-brow {% if forloop.counter0 == 0 %}is-1{% elif forloop.counter0 == 1 %}is-2{% elif forloop.counter0 == 2 %}is-3{% endif %}">
+          <span class="ref-brow__rank">{{ forloop.counter }}</span>
+          <span class="ref-friend__ava">
+            {% if b.photo %}<img src="{{ b.photo }}" alt=""/>{% else %}<span class="ref-friend__ph">{{ b.name|first|upper }}</span>{% endif %}
+          </span>
+          <span class="ref-brow__name">{{ b.name }}</span>
+          <span class="ref-brow__n">{{ b.invited|fmt }} do'st</span>
+        </div>
+      {% empty %}
+        <div class="ref-empty">Hali reyting bo'sh.</div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<script>
+  (function () {
+    var link = document.getElementById('refLink').getAttribute('data-link');
+    var note = document.getElementById('refNote');
+    function say(t) { note.hidden = false; note.textContent = t; setTimeout(function () { note.hidden = true; }, 2500); }
+    document.getElementById('refCopy').addEventListener('click', function () {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).then(function () { say('Havola nusxa olindi ✓'); })
+          .catch(function () { fallback(); });
+      } else { fallback(); }
+      function fallback() {
+        var ta = document.createElement('textarea'); ta.value = link; document.body.appendChild(ta);
+        ta.select(); try { document.execCommand('copy'); } catch (e) {} ta.remove(); say('Havola nusxa olindi ✓');
+      }
+    });
+    document.getElementById('refShare').addEventListener('click', function () {
+      var text = "SKINRUSH — CS2 skinlar! Menga qo'shil va bonus ol 🎁";
+      var url = 'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(text);
+      var tg = window.Telegram && window.Telegram.WebApp;
+      if (tg && tg.openTelegramLink) tg.openTelegramLink(url); else window.open(url, '_blank');
+    });
+  })();
+</script>
+{% endblock %}

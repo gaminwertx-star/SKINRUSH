@@ -20,7 +20,6 @@
           <div class="bt-lobby__seat is-filled">
             <span class="bt-ava is-big">
               {% if s.photo %}<img src="{{ s.photo }}" alt="" />{% else %}<span class="bt-ava__ph">{{ s.name|slice:':1'|upper }}</span>{% endif %}
-              <span class="bt-ava__badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1.5 3 4 4.5 4 8a4 4 0 0 1-8 0c0-1 .4-1.8 1-2.5C9 8 9.5 5 12 2z"/></svg>{{ s.streak }}</span>
             </span>
             <span class="bt-lobby__name">{{ s.name }}</span>
           </div>
@@ -70,14 +69,16 @@
           <div class="bt-reel-row__who">
             <span class="bt-ava">
               {% if r.photo %}<img src="{{ r.photo }}" alt="" />{% else %}<span class="bt-ava__ph">{{ r.name|slice:':1'|upper }}</span>{% endif %}
-              <span class="bt-ava__badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1.5 3 4 4.5 4 8a4 4 0 0 1-8 0c0-1 .4-1.8 1-2.5C9 8 9.5 5 12 2z"/></svg>{{ r.streak }}</span>
             </span>
             <span class="bt-reel-row__total" data-total>{{ r.total|fmt }} <img class="coin-img" src="/images/coin.png" alt="" /></span>
           </div>
           <div class="bt-reel" data-reel>
             <div class="bt-reel__track" data-track>
               {% for it in r.drops %}
-                <span class="bt-tile" style="--rc:{{ it.color|default:'#b0c3d9' }}"><img src="{{ it.img|img }}" alt="" loading="lazy" /></span>
+                <span class="bt-tile bt-tile--real" style="--rc:{{ it.color|default:'#b0c3d9' }}">
+                  <img src="{{ it.img|img }}" alt="" loading="lazy" />
+                  <span class="bt-tile__price">{{ it.price|fmt }} <img class="coin-img" src="/images/coin.png" alt="" /></span>
+                </span>
               {% endfor %}
             </div>
             <span class="bt-reel__marker"></span>
@@ -96,7 +97,6 @@
         <div class="bt-win__hero">
           <span class="bt-ava is-hero is-won">
             {% if winner.photo %}<img src="{{ winner.photo }}" alt="" />{% else %}<span class="bt-ava__ph">{{ winner.name|slice:':1'|upper }}</span>{% endif %}
-            <span class="bt-ava__badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1.5 3 4 4.5 4 8a4 4 0 0 1-8 0c0-1 .4-1.8 1-2.5C9 8 9.5 5 12 2z"/></svg>{{ winner.streak }}</span>
           </span>
           <div class="bt-win__name">{{ winner.name }}</div>
           <div class="bt-win__total">{{ b.pot|fmt }} <img class="coin-img" src="/images/coin.png" alt="" /></div>
@@ -183,11 +183,13 @@
   var coin = '<img class="coin-img" src="/images/coin.png" alt="" />';
 
   function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
-  function tile(d) {
+  function tile(d, real) {
     var t = document.createElement('span');
-    t.className = 'bt-tile';
+    t.className = 'bt-tile' + (real ? ' bt-tile--real' : '');
     t.style.setProperty('--rc', (d && d.color) || '#b0c3d9');
-    t.innerHTML = '<img src="' + (d ? d.img : '') + '" alt="" />';
+    var price = (real && d && d.price != null)
+      ? '<span class="bt-tile__price">' + fmt(d.price) + ' ' + coin + '</span>' : '';
+    t.innerHTML = '<img src="' + (d ? d.img : '') + '" alt="" />' + price;
     return t;
   }
 
@@ -202,7 +204,7 @@
     for (var r = 0; r < rounds; r++) {
       for (var f = 0; f < FILLER; f++) track.appendChild(tile(rand()));
       realIdx.push(track.children.length);        // index of this round's real skin
-      track.appendChild(tile(drops[r]));
+      track.appendChild(tile(drops[r], true));
     }
     // a little tail so the last skin isn't at the very edge
     for (var e = 0; e < 6; e++) track.appendChild(tile(rand()));

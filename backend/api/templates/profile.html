@@ -16,7 +16,6 @@
         {% else %}
           <div class="prof-ava__img prof-ava__img--ph">{{ P.name|first|upper }}</div>
         {% endif %}
-        <span class="prof-ava__lvl">{{ level.level }}</span>
       </div>
 
       <div class="prof-id">
@@ -25,15 +24,6 @@
           <span class="prof-id__handle">@{{ P.handle }}</span>
           {% if P.since %}<span class="prof-dot">•</span><span>{{ S.prof_member_since }} {{ P.since|date:"M Y" }}</span>{% endif %}
           {% if P.id %}<span class="prof-dot">•</span><span>{{ S.prof_id }} {{ P.id }}</span>{% endif %}
-        </div>
-
-        <div class="prof-xp">
-          <div class="prof-xp__head">
-            <span class="prof-xp__lvl">{{ S.prof_level }} {{ level.level }}</span>
-            <span class="prof-xp__num">{{ level.cur|fmt }} / {{ level.need|fmt }} XP</span>
-          </div>
-          <div class="prof-xp__bar"><span class="prof-xp__fill" style="width:{{ level.pct }}%"></span></div>
-          <div class="prof-xp__sub">{{ level.remaining|fmt }} XP {{ S.prof_xp_to }}</div>
         </div>
       </div>
     </div>
@@ -111,7 +101,7 @@
     <div class="prof-panel prof-invp">
       <div class="prof-panel__head">
         <h3 class="prof-panel__h">{{ S.prof_inv_preview }}</h3>
-        <a class="prof-panel__more" href="{% url 'inventory' %}">{{ S.prof_view_all }}</a>
+        {% if not PUBLIC %}<a class="prof-panel__more" href="{% url 'inventory' %}">{{ S.prof_view_all }}</a>{% endif %}
       </div>
       {% if inv_preview %}
         <div class="prof-invp__grid">

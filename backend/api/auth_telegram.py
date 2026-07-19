@@ -91,6 +91,7 @@ def verify_webapp(init_data):
         return None
     if not user.get("id"):
         return None
+    user["_start_param"] = pairs.get("start_param", "")   # referral code, if any
     return user
 
 
