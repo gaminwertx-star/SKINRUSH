@@ -412,9 +412,11 @@ body::after {
   animation: rev-rays 16s linear infinite;
 }
 @keyframes rev-rays { to { transform: translate(-50%, -50%) rotate(360deg); } }
-.reveal__glow, .reveal__imgwrap, .reveal__tier, .reveal__name,
+/* NB: do NOT include .reveal__glow here — it is position:absolute decoration;
+   making it relative pushed it into flow and left a tall empty gap above the
+   skin. Only the real content needs lifting above the rays. */
+.reveal__imgwrap, .reveal__tier, .reveal__name,
 .reveal__price, .reveal__details { position: relative; z-index: 1; }
-.reveal__imgwrap { position: relative; }
 .reveal__img { position: relative; z-index: 1; }
 /* the rarity tier badge gets a lit ring so it reads as a "grade" stamp */
 .reveal__tier {
