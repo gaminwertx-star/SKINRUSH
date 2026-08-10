@@ -121,6 +121,9 @@ class Player(models.Model):
     daily_day = models.IntegerField(default=0)                 # position in the 14-day cycle
     daily_claimed_date = models.DateField(null=True, blank=True)  # last daily claim (date)
     daily_claimed_at = models.DateTimeField(null=True, blank=True)  # last daily claim (24h timer)
+    # Tasks: subscribe-to-channel task on the home page ("Topshiriq"). One-off,
+    # so this is a simple flag rather than a full task table for now.
+    telegram_task_claimed = models.BooleanField(default=False, db_index=True)
     # Moderation: a banned player cannot open cases, withdraw or top up.
     is_banned = models.BooleanField(default=False, db_index=True)
     ban_reason = models.CharField(max_length=200, blank=True)

@@ -22,22 +22,54 @@ from django.views.decorators.http import require_POST
 
 APP_URL = os.environ.get("MINIAPP_URL", "https://95-169-201-44.sslip.io/")
 
+# Telegram user ids allowed to run admin-only bot commands (/broadcast). Comma
+# separated, e.g. "123456789,987654321". A user's numeric id (not @username)
+# — they can get their own from @userinfobot.
+ADMIN_IDS = {
+    int(x) for x in os.environ.get("TELEGRAM_ADMIN_IDS", "").split(",")
+    if x.strip().isdigit()
+}
+
+# The "subscribe to our channel" home-page task.
+TASK_CHANNEL = os.environ.get("TELEGRAM_TASK_CHANNEL", "@skinrush_uz")
+TASK_CHANNEL_URL = os.environ.get("TELEGRAM_TASK_CHANNEL_URL",
+                                  f"https://t.me/{TASK_CHANNEL.lstrip('@')}")
+TASK_REWARD = 500
+
 
 def _api(method, payload):
     """Call the Telegram Bot API (stdlib only, no requests dependency)."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     if not token:
-        return
+        return None
     url = f"https://api.telegram.org/bot{token}/{method}"
     data = json.dumps(payload).encode()
     req = urllib.request.Request(
         url, data=data, headers={"Content-Type": "application/json"}
     )
     try:
-        urllib.request.urlopen(req, timeout=10).read()
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
     except Exception:
         # never let a Telegram-side hiccup 500 the webhook (Telegram retries)
-        pass
+        return None
+
+
+def is_channel_subscriber(user_id):
+    """True if `user_id` currently belongs to TASK_CHANNEL.
+
+    Requires the bot to be an admin of that channel — Telegram refuses
+    getChatMember for a channel otherwise. On any API failure (missing token,
+    bot not an admin, network hiccup) this returns False rather than raising,
+    so the task simply stays unclaimed until it's fixed.
+    """
+    if not user_id:
+        return False
+    res = _api("getChatMember", {"chat_id": TASK_CHANNEL, "user_id": user_id})
+    if not res or not res.get("ok"):
+        return False
+    status = (res.get("result") or {}).get("status")
+    return status in ("member", "administrator", "creator")
 
 
 def _fmt(n):
@@ -120,6 +152,25 @@ def _esc(s):
     """Escape user/catalog text for parse_mode=HTML (skin names carry | and &)."""
     return (str(s or "").replace("&", "&amp;")
             .replace("<", "&lt;").replace(">", "&gt;"))
+
+
+# ---------------------------------------------------------------- broadcast
+def _broadcast(text, from_chat_id):
+    """Send `text` to every player who ever linked Telegram. Synchronous —
+    fine for the current user count; move to a background task if the
+    player base grows large enough for this to hold up the webhook."""
+    from .models import Player
+
+    ids = list(Player.objects.exclude(telegram_id__isnull=True)
+               .values_list("telegram_id", flat=True))
+    sent = 0
+    for tid in ids:
+        if _api("sendMessage", {"chat_id": tid, "text": text, "parse_mode": "HTML"}):
+            sent += 1
+    _api("sendMessage", {
+        "chat_id": from_chat_id,
+        "text": f"✅ Xabar {sent}/{len(ids)} foydalanuvchiga yuborildi.",
+    })
 
 
 def _open_app_button(text="🎮 Ochish", path=""):
@@ -399,6 +450,20 @@ def webhook(request, secret=""):
     chat_id = chat.get("id")
     text = (msg.get("text") or "").strip()
     if not chat_id:
+        return JsonResponse({"ok": True})
+
+    if text.startswith("/broadcast"):
+        frm = msg.get("from") or {}
+        if frm.get("id") not in ADMIN_IDS:
+            _api("sendMessage", {"chat_id": chat_id,
+                                 "text": "⛔ Bu buyruq faqat adminlar uchun."})
+            return JsonResponse({"ok": True})
+        body = text[len("/broadcast"):].strip()
+        if not body:
+            _api("sendMessage", {"chat_id": chat_id,
+                                 "text": "Foydalanish: /broadcast <xabar matni>"})
+            return JsonResponse({"ok": True})
+        _broadcast(body, chat_id)
         return JsonResponse({"ok": True})
 
     if text.startswith("/start"):

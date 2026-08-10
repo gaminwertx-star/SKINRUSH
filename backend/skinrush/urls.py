@@ -31,6 +31,7 @@ urlpatterns = [
     # ---- public server-rendered site ----
     path("", pages.home, name="home"),
     path("kunlik/olish/", pages.daily_claim, name="daily-claim"),
+    path("topshiriq/telegram/", pages.telegram_task_check, name="telegram-task-check"),
 
     path("drop/<int:pk>/", pages.drop_detail, name="drop"),
     path("top-drops-feed/", pages.top_drops_feed, name="top-drops-feed"),

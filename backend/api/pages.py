@@ -33,6 +33,7 @@ from .models import (
     coins_for_sum,
 )
 from .telegram_bot import (
+    TASK_CHANNEL_URL, TASK_REWARD, is_channel_subscriber,
     notify_topup_new_message, notify_topup_request, notify_withdraw,
 )
 from .views import (
@@ -133,7 +134,31 @@ def home(request):
         "q": q, "min": mn or "", "max": mx or "",
         "days": days, "tasks": _tasks(lang), "daily_claimed": claimed_today,
         "daily_secs": daily_secs,
+        "task_channel_url": TASK_CHANNEL_URL, "task_reward": TASK_REWARD,
+        "task_sub": i18n.t(lang, "task_telegram_sub").format(n=TASK_REWARD),
+        "task_done": bool(player and player.telegram_task_claimed),
     })
+
+
+@require_POST
+def telegram_task_check(request):
+    """The home-page "subscribe to our Telegram channel" task. Called after
+    the player has (supposedly) tapped through to the channel; verifies via
+    the Bot API and credits the reward once, the first time it passes."""
+    player = current_player(request)
+    lang = i18n.get_lang(request)
+    if not player or not player.telegram_id:
+        messages.error(request, i18n.t(lang, "toast_task_need_telegram"))
+        return redirect("home")
+    if player.telegram_task_claimed:
+        return redirect("home")
+    if is_channel_subscriber(player.telegram_id):
+        Player.objects.filter(pk=player.pk).update(
+            balance=F("balance") + TASK_REWARD, telegram_task_claimed=True)
+        messages.success(request, i18n.t(lang, "toast_task_done").format(n=TASK_REWARD))
+    else:
+        messages.info(request, i18n.t(lang, "toast_task_not_subbed"))
+    return redirect("home")
 
 
 @require_POST
