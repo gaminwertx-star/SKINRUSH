@@ -136,17 +136,31 @@
 
 {% block scripts %}
 <script>
-  // Telegram-subscribe task: first tap opens the channel in a new tab.
-  // When the player comes back to this tab (visibilitychange), the button
-  // flips into a "Claim" button — tapping it submits the check; if they
-  // weren't actually subscribed yet it just stays a Claim button so they
-  // can try again after they do.
+  // Telegram-subscribe task: first tap opens the channel. When the player
+  // comes back to this tab (visibilitychange — covers mobile, where the
+  // webview survives) the button flips into "Claim". On desktop, opening
+  // the link often closes/reloads the mini app entirely, wiping in-memory
+  // JS state before visibilitychange ever fires — so the "clicked" flag is
+  // also persisted to localStorage per task id and checked again on load.
   (function () {
     var btn = document.getElementById('tgTaskBtn');
     var form = document.getElementById('tgTaskForm');
     if (!btn || !form) return;
     var label = document.getElementById('tgTaskBtnLabel');
+    var taskIdInput = form.querySelector('input[name="task_id"]');
+    var storeKey = taskIdInput ? 'sr_task_clicked_' + taskIdInput.value : null;
     var awaitingReturn = false;
+
+    function toClaimMode() {
+      btn.dataset.mode = 'claim';
+      if (label) label.textContent = "{{ S.task_claim_btn }}";
+    }
+
+    if (storeKey) {
+      try {
+        if (localStorage.getItem(storeKey)) toClaimMode();
+      } catch (e) {}
+    }
 
     btn.addEventListener('click', function (e) {
       if (btn.dataset.mode === 'claim') {
@@ -154,17 +168,18 @@
         if (btn.classList.contains('is-loading')) return;
         btn.classList.add('is-loading');
         if (label) label.textContent = "{{ S.task_checking }}";
+        if (storeKey) { try { localStorage.removeItem(storeKey); } catch (e) {} }
         form.submit();
         return;
       }
       awaitingReturn = true;
+      if (storeKey) { try { localStorage.setItem(storeKey, '1'); } catch (e) {} }
     });
 
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState !== 'visible' || !awaitingReturn) return;
       awaitingReturn = false;
-      btn.dataset.mode = 'claim';
-      if (label) label.textContent = "{{ S.task_claim_btn }}";
+      toClaimMode();
     });
   })();
 
