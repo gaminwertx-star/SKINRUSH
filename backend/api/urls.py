@@ -34,6 +34,9 @@ urlpatterns = [
          name="admin-payment-admin-detail"),
     path("admin/promos/", admin_api.admin_promos, name="admin-promos"),
     path("admin/promos/<int:pk>/", admin_api.admin_promo_detail, name="admin-promo-detail"),
+    path("admin/channel-tasks/", admin_api.admin_channel_tasks, name="admin-channel-tasks"),
+    path("admin/channel-tasks/<int:pk>/", admin_api.admin_channel_task_detail,
+         name="admin-channel-task-detail"),
     path("admin/topups/", admin_api.admin_topups, name="admin-topups"),
     path("admin/topup-chats/", admin_api.admin_topup_chats, name="admin-topup-chats"),
     path("admin/topup-chats/<int:pk>/", admin_api.admin_topup_chat, name="admin-topup-chat"),
@@ -49,6 +52,7 @@ urlpatterns = [
          name="admin-withdraw-mark-sent"),
     path("admin/withdraws/<int:pk>/complete/", admin_api.admin_withdraw_complete,
          name="admin-withdraw-complete"),
+    path("admin/broadcasts/", admin_api.admin_broadcasts, name="admin-broadcasts"),
     # Player auth (Telegram)
     path("auth/config/", auth_telegram.auth_config, name="auth-config"),
     path("auth/me/", auth_telegram.auth_me, name="auth-me"),

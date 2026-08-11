@@ -4,47 +4,48 @@
 
 <!-- DAILY REWARD + TASKS -->
 <section class="promo-grid">
+  {% if channel_task %}
   <div class="panel task-card">
     <div class="task-card__row">
       <div class="task-card__icon" aria-hidden="true">
-        <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+        <svg viewBox="0 0 240 240" width="44" height="44" xmlns="http://www.w3.org/2000/svg">
           <circle cx="120" cy="120" r="120" fill="#29A9EA"/>
           <path fill="#fff" d="M180.5 72.3c1.7-7.6-2.8-10.6-8-8.7L52.6 115.4c-7.4 2.9-7.3 7-1.3 8.8l30.6 9.6 71-44.8c3.3-2.2 6.4-1 3.9 1.4l-57.5 52-2.2 31.2c3.2 0 4.6-1.5 6.4-3.2l15.4-14.9 32 23.6c5.9 3.3 10.1 1.6 11.6-5.4l21-99.4Z"/>
         </svg>
       </div>
       <div class="task-card__body">
         <span class="task-card__badge">{{ S.task_badge }}</span>
-        <h3 class="task-card__title">{{ S.task_telegram }}</h3>
-        <p class="task-card__sub">{{ task_sub }}</p>
+        <h3 class="task-card__title">{{ channel_task.name }}</h3>
+        <p class="task-card__sub">{{ channel_task_sub }}</p>
       </div>
       <div class="task-card__action">
-        {% if task_done %}
-          <button type="button" class="btn btn--teal task-card__btn" disabled>{{ S.task_done_label }}</button>
-        {% else %}
-          <form method="post" action="{% url 'telegram-task-check' %}" id="tgTaskForm">{% csrf_token %}</form>
-          <a href="{{ task_channel_url }}" target="_blank" rel="noopener"
-             class="btn btn--teal task-card__btn" id="tgTaskBtn">
-            <span id="tgTaskBtnLabel">{{ S.task_subscribe_btn }}</span>
-            <svg class="task-card__ext" viewBox="0 0 24 24" width="14" height="14" fill="none"
-                 stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-              <path d="M15 3h6v6"/><path d="M10 14 21 3"/>
-            </svg>
-          </a>
-        {% endif %}
+        <form method="post" action="{% url 'telegram-task-check' %}" id="tgTaskForm">
+          {% csrf_token %}
+          <input type="hidden" name="task_id" value="{{ channel_task.id }}" />
+        </form>
+        <a href="{{ channel_task.link }}" target="_blank" rel="noopener"
+           class="btn btn--teal task-card__btn" id="tgTaskBtn">
+          <span id="tgTaskBtnLabel">{{ S.task_subscribe_btn }}</span>
+          <svg class="task-card__ext" viewBox="0 0 24 24" width="14" height="14" fill="none"
+               stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <path d="M15 3h6v6"/><path d="M10 14 21 3"/>
+          </svg>
+        </a>
       </div>
     </div>
     <div class="task-card__foot">
       <div class="task-card__reward">
         <img class="coin-img" src="/images/coin.png" alt="" />
-        {{ S.task_reward_label }}: <b>{{ task_reward|fmt }}</b>
+        {{ S.task_reward_label }}: <b>{{ channel_task.reward|fmt }}</b>
       </div>
-      <div class="task-card__progress-num">{% if task_done %}1/1{% else %}0/1{% endif %}</div>
+      <div class="task-card__progress-num">{{ channel_tasks_done }}/{{ channel_tasks_total }}</div>
     </div>
     <div class="task-card__bar">
-      <div class="task-card__bar-fill{% if task_done %} is-full{% endif %}"></div>
+      <div class="task-card__bar-fill" style="width: {% widthratio channel_tasks_done channel_tasks_total 100 %}%;"></div>
     </div>
   </div>
+  {% endif %}
 
   <div class="panel daily">
     <div class="panel__head">
@@ -135,19 +136,35 @@
 
 {% block scripts %}
 <script>
-  // Telegram-subscribe task: clicking opens the channel in a new tab, then
-  // auto-submits the check form a few seconds later so the reward lands
-  // without a second tap. If they're not subscribed yet, they just try again.
+  // Telegram-subscribe task: first tap opens the channel in a new tab.
+  // When the player comes back to this tab (visibilitychange), the button
+  // flips into a "Claim" button — tapping it submits the check; if they
+  // weren't actually subscribed yet it just stays a Claim button so they
+  // can try again after they do.
   (function () {
     var btn = document.getElementById('tgTaskBtn');
     var form = document.getElementById('tgTaskForm');
     if (!btn || !form) return;
     var label = document.getElementById('tgTaskBtnLabel');
-    btn.addEventListener('click', function () {
-      if (btn.classList.contains('is-loading')) return;
-      btn.classList.add('is-loading');
-      if (label) label.textContent = "{{ S.task_checking }}";
-      setTimeout(function () { form.submit(); }, 3500);
+    var awaitingReturn = false;
+
+    btn.addEventListener('click', function (e) {
+      if (btn.dataset.mode === 'claim') {
+        e.preventDefault();
+        if (btn.classList.contains('is-loading')) return;
+        btn.classList.add('is-loading');
+        if (label) label.textContent = "{{ S.task_checking }}";
+        form.submit();
+        return;
+      }
+      awaitingReturn = true;
+    });
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState !== 'visible' || !awaitingReturn) return;
+      awaitingReturn = false;
+      btn.dataset.mode = 'claim';
+      if (label) label.textContent = "{{ S.task_claim_btn }}";
     });
   })();
 

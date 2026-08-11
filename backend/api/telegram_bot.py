@@ -30,12 +30,6 @@ ADMIN_IDS = {
     if x.strip().isdigit()
 }
 
-# The "subscribe to our channel" home-page task.
-TASK_CHANNEL = os.environ.get("TELEGRAM_TASK_CHANNEL", "@skinrush_uz")
-TASK_CHANNEL_URL = os.environ.get("TELEGRAM_TASK_CHANNEL_URL",
-                                  f"https://t.me/{TASK_CHANNEL.lstrip('@')}")
-TASK_REWARD = 500
-
 
 def _api(method, payload):
     """Call the Telegram Bot API (stdlib only, no requests dependency)."""
@@ -55,17 +49,17 @@ def _api(method, payload):
         return None
 
 
-def is_channel_subscriber(user_id):
-    """True if `user_id` currently belongs to TASK_CHANNEL.
+def is_channel_subscriber(user_id, channel):
+    """True if `user_id` currently belongs to `channel` (e.g. "@skinrush_uz").
 
     Requires the bot to be an admin of that channel — Telegram refuses
     getChatMember for a channel otherwise. On any API failure (missing token,
     bot not an admin, network hiccup) this returns False rather than raising,
     so the task simply stays unclaimed until it's fixed.
     """
-    if not user_id:
+    if not user_id or not channel:
         return False
-    res = _api("getChatMember", {"chat_id": TASK_CHANNEL, "user_id": user_id})
+    res = _api("getChatMember", {"chat_id": channel, "user_id": user_id})
     if not res or not res.get("ok"):
         return False
     status = (res.get("result") or {}).get("status")
@@ -155,21 +149,39 @@ def _esc(s):
 
 
 # ---------------------------------------------------------------- broadcast
+def broadcast_to(telegram_ids, text="", image_url=None):
+    """Send `text` (optionally with a photo) to a list of Telegram ids.
+    Returns (sent, total). Synchronous — fine at the current player count;
+    move to a background task if the player base grows large enough for
+    this to hold up the request/webhook."""
+    text = (text or "").strip()
+    sent = 0
+    for tid in telegram_ids:
+        if image_url:
+            ok = _api("sendPhoto", {
+                "chat_id": tid, "photo": image_url,
+                "caption": text[:1024], "parse_mode": "HTML",
+            })
+        elif text:
+            ok = _api("sendMessage", {"chat_id": tid, "text": text, "parse_mode": "HTML"})
+        else:
+            ok = None
+        if ok:
+            sent += 1
+    return sent, len(telegram_ids)
+
+
 def _broadcast(text, from_chat_id):
-    """Send `text` to every player who ever linked Telegram. Synchronous —
-    fine for the current user count; move to a background task if the
-    player base grows large enough for this to hold up the webhook."""
+    """/broadcast <text> bot command — sends to every player who ever linked
+    Telegram, then reports the result back to the admin who sent it."""
     from .models import Player
 
     ids = list(Player.objects.exclude(telegram_id__isnull=True)
                .values_list("telegram_id", flat=True))
-    sent = 0
-    for tid in ids:
-        if _api("sendMessage", {"chat_id": tid, "text": text, "parse_mode": "HTML"}):
-            sent += 1
+    sent, total = broadcast_to(ids, text=text)
     _api("sendMessage", {
         "chat_id": from_chat_id,
-        "text": f"✅ Xabar {sent}/{len(ids)} foydalanuvchiga yuborildi.",
+        "text": f"✅ Xabar {sent}/{total} foydalanuvchiga yuborildi.",
     })
 
 

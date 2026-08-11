@@ -158,6 +158,72 @@ class Player(models.Model):
         return self.display_name
 
 
+class ChannelTask(models.Model):
+    """A "subscribe to our channel" home-page task, configured by the admin
+    (not hardcoded). Multiple can exist; a player is shown one at a time, in
+    `sort_order`, until each has been claimed — a claim is recorded once and
+    for all in ChannelTaskClaim and is never re-asked for again, even if the
+    player later leaves the channel."""
+
+    name = models.CharField(max_length=120)           # shown to the player, e.g. "SKINRUSH UZ"
+    link = models.URLField(max_length=300)             # e.g. https://t.me/skinrush_uz
+    reward = models.PositiveIntegerField(default=500)  # coins credited on claim
+    sort_order = models.IntegerField(default=0, db_index=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+
+    @property
+    def channel_username(self):
+        """The @username Telegram needs for getChatMember, parsed from the
+        t.me link. Private "+invite" links can't be checked this way and
+        return None — the admin panel warns about that."""
+        handle = self.link.rstrip("/").split("/")[-1].split("?")[0]
+        if not handle or handle.startswith("+") or handle.lower() == "joinchat":
+            return None
+        return "@" + handle.lstrip("@")
+
+    def __str__(self):
+        return self.name
+
+
+class ChannelTaskClaim(models.Model):
+    """One player having claimed one ChannelTask — permanent, never reversed
+    even if the player unsubscribes afterwards."""
+
+    player = models.ForeignKey("Player", on_delete=models.CASCADE, related_name="channel_claims")
+    task = models.ForeignKey(ChannelTask, on_delete=models.CASCADE, related_name="claims")
+    claimed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["player", "task"], name="unique_player_channel_task"),
+        ]
+
+
+class BroadcastMessage(models.Model):
+    """History of an admin broadcast sent to players via the bot."""
+
+    AUD_ALL, AUD_ACTIVE = "all", "active"
+    AUDIENCES = [(AUD_ALL, "Barcha foydalanuvchilar"), (AUD_ACTIVE, "Faol foydalanuvchilar")]
+
+    text = models.TextField(blank=True)
+    image = models.FileField(upload_to="broadcasts/%Y/%m/", blank=True, null=True)
+    audience = models.CharField(max_length=16, choices=AUDIENCES, default=AUD_ALL)
+    sent_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    recipients = models.IntegerField(default=0)  # how many were targeted
+    delivered = models.IntegerField(default=0)   # how many the Bot API accepted
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.created_at:%Y-%m-%d %H:%M} — {self.delivered}/{self.recipients}"
+
+
 class OpenRecord(models.Model):
     """One skin a player has owned — the inventory and its whole history.
 

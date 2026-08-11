@@ -28,13 +28,13 @@ from .auth_telegram import current_player, verify_webapp
 from .templatetags.skinrush_extras import img as _img_url
 from .models import (
     TOPUP_MIN_SUM, TOPUP_PACK_COINS, TOPUP_PACK_SUM,
-    Battle, Case, CaseItem, Drop, FreeCase, OpenRecord, PaymentAdmin, Player,
-    PromoCode, PromoRedemption, TopUpMessage, TopUpRequest, WithdrawRequest,
-    coins_for_sum,
+    Battle, Case, CaseItem, ChannelTask, ChannelTaskClaim, Drop, FreeCase,
+    OpenRecord, PaymentAdmin, Player, PromoCode, PromoRedemption, TopUpMessage,
+    TopUpRequest, WithdrawRequest, coins_for_sum,
 )
 from .telegram_bot import (
-    TASK_CHANNEL_URL, TASK_REWARD, is_channel_subscriber,
-    notify_topup_new_message, notify_topup_request, notify_withdraw,
+    is_channel_subscriber, notify_topup_new_message, notify_topup_request,
+    notify_withdraw,
 )
 from .views import (
     DAILY_DAYS, DAILY_TASKS, UPGRADE_EDGE,
@@ -129,33 +129,50 @@ def home(request):
         days = _daily_days(claimed_today)
         daily_secs = 0
 
+    channel_task = None
+    channel_tasks_done = channel_tasks_total = 0
+    if player:
+        active_tasks = list(ChannelTask.objects.filter(is_active=True))
+        channel_tasks_total = len(active_tasks)
+        if channel_tasks_total:
+            claimed_ids = set(ChannelTaskClaim.objects.filter(
+                player=player, task__in=active_tasks).values_list("task_id", flat=True))
+            channel_tasks_done = len(claimed_ids)
+            channel_task = next((t for t in active_tasks if t.id not in claimed_ids), None)
+
     return render(request, "home.html", {
         "ACTIVE": "bonuslar", "cases": cases,
         "q": q, "min": mn or "", "max": mx or "",
         "days": days, "tasks": _tasks(lang), "daily_claimed": claimed_today,
         "daily_secs": daily_secs,
-        "task_channel_url": TASK_CHANNEL_URL, "task_reward": TASK_REWARD,
-        "task_sub": i18n.t(lang, "task_telegram_sub").format(n=TASK_REWARD),
-        "task_done": bool(player and player.telegram_task_claimed),
+        "channel_task": channel_task,
+        "channel_task_sub": (i18n.t(lang, "task_telegram_sub").format(n=channel_task.reward)
+                              if channel_task else ""),
+        "channel_tasks_done": channel_tasks_done, "channel_tasks_total": channel_tasks_total,
     })
 
 
 @require_POST
 def telegram_task_check(request):
-    """The home-page "subscribe to our Telegram channel" task. Called after
-    the player has (supposedly) tapped through to the channel; verifies via
-    the Bot API and credits the reward once, the first time it passes."""
+    """The home-page "subscribe to a channel" task. Called after the player
+    has (supposedly) tapped through to the channel; verifies via the Bot API
+    and credits the reward once — a claim is recorded permanently, so once
+    granted it's never asked for again even if they leave the channel."""
     player = current_player(request)
     lang = i18n.get_lang(request)
     if not player or not player.telegram_id:
         messages.error(request, i18n.t(lang, "toast_task_need_telegram"))
         return redirect("home")
-    if player.telegram_task_claimed:
+    task = ChannelTask.objects.filter(pk=request.POST.get("task_id"), is_active=True).first()
+    if not task or ChannelTaskClaim.objects.filter(player=player, task=task).exists():
         return redirect("home")
-    if is_channel_subscriber(player.telegram_id):
-        Player.objects.filter(pk=player.pk).update(
-            balance=F("balance") + TASK_REWARD, telegram_task_claimed=True)
-        messages.success(request, i18n.t(lang, "toast_task_done").format(n=TASK_REWARD))
+    channel = task.channel_username
+    if channel and is_channel_subscriber(player.telegram_id, channel):
+        with transaction.atomic():
+            _, created = ChannelTaskClaim.objects.get_or_create(player=player, task=task)
+            if created:
+                Player.objects.filter(pk=player.pk).update(balance=F("balance") + task.reward)
+        messages.success(request, i18n.t(lang, "toast_task_done").format(n=task.reward))
     else:
         messages.info(request, i18n.t(lang, "toast_task_not_subbed"))
     return redirect("home")

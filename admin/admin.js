@@ -7,6 +7,11 @@ const jpost = (u, body) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body || {}),
   }).then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => ({})) }));
+const jpostForm = (u, formData) =>
+  fetch(u, { method: "POST", body: formData }).then(async (r) => ({
+    ok: r.ok,
+    data: await r.json().catch(() => ({})),
+  }));
 const jdel = (u) =>
   fetch(u, { method: "DELETE" }).then(async (r) => ({
     ok: r.ok,
@@ -107,8 +112,10 @@ document.getElementById("nav").addEventListener("click", (e) => {
 
 // ---------- mobile drawer ----------
 const VIEW_TITLES = {
-  dashboard: "Dashboard", users: "Foydalanuvchilar", withdraws: "Withdraw so'rovlari",
-  topups: "To'lov chat", payadmins: "To'lov adminlar", promos: "Promokodlar", cases: "Keyslar",
+  dashboard: "Dashboard", users: "Foydalanuvchilar", broadcast: "Broadcast",
+  withdraws: "Withdraw so'rovlari",
+  topups: "To'lov chat", payadmins: "To'lov adminlar", promos: "Promokodlar",
+  channeltasks: "Kanal topshiriqlari", cases: "Keyslar",
 };
 function setDrawer(open) { document.getElementById("appView").classList.toggle("drawer-open", open); }
 document.getElementById("drawerToggle").addEventListener("click", () => setDrawer(true));
@@ -124,10 +131,12 @@ function switchView(view) {
   );
   if (view === "dashboard") renderDashboard();
   else if (view === "users") renderUsers();
+  else if (view === "broadcast") renderBroadcast();
   else if (view === "withdraws") renderWithdraws();
   else if (view === "topups") renderTopups();
   else if (view === "payadmins") renderPayAdmins();
   else if (view === "promos") renderPromos();
+  else if (view === "channeltasks") renderChannelTasks();
   else if (view === "cases") renderCases();
   else if (view === "audit") renderAudit();
 }
@@ -641,6 +650,263 @@ async function loadPayAdmins() {
 // ---------- promo codes ----------
 let prKind = "bonus";
 
+// ---------- broadcast ----------
+const BC_ICONS = {
+  megaphone: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h2l3.5 5.5a1 1 0 0 0 1.8-.6V6.1a1 1 0 0 0-1.8-.6L6 11H4a1 1 0 0 0-1 1z"/><path d="M17 9a3 3 0 0 1 0 6"/><path d="M17.5 4.5a8 8 0 0 1 0 15"/></svg>`,
+  list: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>`,
+  text: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>`,
+  image: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`,
+  layers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+  users: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+  userCheck: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>`,
+  clock: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+  checkCircle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+  info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+  send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`,
+  upload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
+  x: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+  mail: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="14" rx="2.5"/><path d="M3 7.5l9 6.2 9-6.2"/></svg>`,
+  back: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>`,
+};
+let bcType = "text";
+let bcAudience = "all";
+let bcImageFile = null;
+
+async function renderBroadcast() {
+  bcType = "text"; bcAudience = "all"; bcImageFile = null;
+  main.innerHTML = `
+    <div class="page-head">
+      <div>
+        <div class="page-title page-title--ic"><span class="page-title__ic bc-ic--violet">${BC_ICONS.megaphone}</span>Broadcast xabar yuborish</div>
+        <div class="page-sub">Barcha foydalanuvchilarga xabar yuboring</div>
+      </div>
+      <button class="admin-btn admin-btn--ghost bc-histbtn" id="bcHistBtn">${BC_ICONS.list}<span>Yuborilgan xabarlar</span></button>
+    </div>
+    <div class="bc-grid">
+      <div class="bc-main">
+        <div class="give-box">
+          <div class="give-box__title">Xabar turi</div>
+          <div class="seg bc-seg" id="bcTypeSeg">
+            <button class="seg__btn is-active" data-type="text" type="button">${BC_ICONS.text}<span>Matn</span></button>
+            <button class="seg__btn" data-type="image" type="button">${BC_ICONS.image}<span>Rasm</span></button>
+            <button class="seg__btn" data-type="image_text" type="button">${BC_ICONS.layers}<span>Rasm + matn</span></button>
+          </div>
+
+          <div class="give-box__title bc-mt">Foydalanuvchilar</div>
+          <div class="seg bc-seg" id="bcAudSeg">
+            <button class="seg__btn is-active" data-aud="all" type="button">${BC_ICONS.users}<span>Barcha foydalanuvchilar</span></button>
+            <button class="seg__btn" data-aud="active" type="button">${BC_ICONS.userCheck}<span>Faol (7 kun)</span></button>
+          </div>
+
+          <div id="bcTextWrap" class="bc-mt">
+            <div class="give-box__title">Xabar matni</div>
+            <textarea class="admin-input bc-textarea" id="bcText" maxlength="1000" placeholder="Xabar matnini kiriting..."></textarea>
+            <div class="bc-counter"><span id="bcCount">0</span> / 1000</div>
+          </div>
+
+          <div id="bcImageWrap" class="bc-mt" hidden>
+            <div class="give-box__title">Rasm</div>
+            <label class="bc-drop" id="bcDrop">
+              <input type="file" id="bcFile" accept="image/*" hidden />
+              <span class="bc-drop__ic">${BC_ICONS.upload}</span>
+              <span class="bc-drop__text">Rasmni tanlash uchun bosing</span>
+              <span class="bc-drop__hint">JPG, PNG, WEBP — 8MB gacha</span>
+            </label>
+            <div class="bc-drop-preview" id="bcDropPreview" hidden>
+              <img id="bcDropImg" alt="" />
+              <button class="bc-drop-x" id="bcDropRemove" type="button">${BC_ICONS.x}</button>
+            </div>
+          </div>
+
+          <div class="give-msg" id="bcMsg"></div>
+
+          <div class="bc-acts">
+            <button class="admin-btn bc-btn-ic" id="bcSend" type="button">${BC_ICONS.send}<span>Xabar yuborish</span></button>
+            <button class="admin-btn admin-btn--ghost bc-btn-ic" id="bcClear" type="button">${BC_ICONS.trash}<span>Tozalash</span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="bc-side">
+        <div class="bc-preview-card">
+          <div class="bc-preview-card__title">Xabar oldindan ko'rish</div>
+          <div class="bc-preview" id="bcPreview">
+            <span class="bc-preview__ic">${BC_ICONS.mail}</span>
+            <div class="bc-preview__hint">Xabar yuborilganda foydalanuvchilar quyidagi ko'rinishda oladi</div>
+          </div>
+        </div>
+        <div class="bc-stats" id="bcStats"><div class="loading">Yuklanmoqda…</div></div>
+        <div class="bc-info">
+          <div class="bc-info__head">${BC_ICONS.info}<span>Ma'lumot</span></div>
+          <p>Broadcast xabarlar tanlangan foydalanuvchilar guruhiga Telegram bot orqali yetkaziladi.</p>
+          <p>Noto'g'ri xabar yuborish foydalanuvchilarni bezovta qilishi mumkin.</p>
+        </div>
+      </div>
+    </div>`;
+
+  const typeSeg = document.getElementById("bcTypeSeg");
+  const audSeg = document.getElementById("bcAudSeg");
+  const textWrap = document.getElementById("bcTextWrap");
+  const imageWrap = document.getElementById("bcImageWrap");
+  const textArea = document.getElementById("bcText");
+  const countEl = document.getElementById("bcCount");
+  const dropInput = document.getElementById("bcFile");
+  const dropZone = document.getElementById("bcDrop");
+  const dropPreview = document.getElementById("bcDropPreview");
+  const dropImg = document.getElementById("bcDropImg");
+  const dropRemove = document.getElementById("bcDropRemove");
+  const preview = document.getElementById("bcPreview");
+  const msg = document.getElementById("bcMsg");
+  const sendBtn = document.getElementById("bcSend");
+  const clearBtn = document.getElementById("bcClear");
+  const histBtn = document.getElementById("bcHistBtn");
+
+  function syncFields() {
+    textWrap.hidden = bcType === "image";
+    imageWrap.hidden = bcType === "text";
+  }
+  function updatePreview() {
+    const text = textArea.value.trim();
+    const hasImage = !!bcImageFile && !dropPreview.hidden;
+    if (!text && !hasImage) {
+      preview.classList.remove("has-content");
+      preview.innerHTML = `<span class="bc-preview__ic">${BC_ICONS.mail}</span>
+        <div class="bc-preview__hint">Xabar yuborilganda foydalanuvchilar quyidagi ko'rinishda oladi</div>`;
+      return;
+    }
+    preview.classList.add("has-content");
+    preview.innerHTML = `<div class="bc-bubble">
+      ${hasImage ? `<img class="bc-bubble__img" src="${dropImg.src}" alt="" />` : ""}
+      ${text ? `<div class="bc-bubble__text">${esc(text).replace(/\n/g, "<br>")}</div>` : ""}
+    </div>`;
+  }
+
+  typeSeg.addEventListener("click", (e) => {
+    const b = e.target.closest(".seg__btn"); if (!b) return;
+    bcType = b.dataset.type;
+    typeSeg.querySelectorAll(".seg__btn").forEach((x) => x.classList.toggle("is-active", x === b));
+    syncFields(); updatePreview();
+  });
+  audSeg.addEventListener("click", (e) => {
+    const b = e.target.closest(".seg__btn"); if (!b) return;
+    bcAudience = b.dataset.aud;
+    audSeg.querySelectorAll(".seg__btn").forEach((x) => x.classList.toggle("is-active", x === b));
+  });
+  textArea.addEventListener("input", () => {
+    countEl.textContent = textArea.value.length;
+    updatePreview();
+  });
+  dropZone.addEventListener("click", () => dropInput.click());
+  dropInput.addEventListener("change", () => {
+    const f = dropInput.files[0];
+    if (!f) return;
+    bcImageFile = f;
+    const reader = new FileReader();
+    reader.onload = () => {
+      dropImg.src = reader.result;
+      dropZone.hidden = true;
+      dropPreview.hidden = false;
+      updatePreview();
+    };
+    reader.readAsDataURL(f);
+  });
+  dropRemove.addEventListener("click", () => {
+    bcImageFile = null;
+    dropInput.value = "";
+    dropZone.hidden = false;
+    dropPreview.hidden = true;
+    updatePreview();
+  });
+
+  clearBtn.addEventListener("click", () => {
+    textArea.value = ""; countEl.textContent = "0";
+    bcImageFile = null; dropInput.value = "";
+    dropZone.hidden = false; dropPreview.hidden = true;
+    msg.className = "give-msg"; msg.textContent = "";
+    updatePreview();
+  });
+
+  sendBtn.addEventListener("click", async () => {
+    const text = textArea.value.trim();
+    if (bcType !== "image" && !text && !bcImageFile) {
+      msg.className = "give-msg is-err"; msg.textContent = "Xabar matni yoki rasm kerak"; return;
+    }
+    if (bcType === "image" && !bcImageFile) {
+      msg.className = "give-msg is-err"; msg.textContent = "Rasm tanlang"; return;
+    }
+    const audLabel = bcAudience === "active" ? "faol" : "barcha";
+    if (!confirm(`Xabar ${audLabel} foydalanuvchilarga yuborilsinmi?`)) return;
+    sendBtn.disabled = true;
+    const fd = new FormData();
+    fd.append("text", bcType === "image" ? "" : text);
+    fd.append("audience", bcAudience);
+    if (bcImageFile && bcType !== "text") fd.append("image", bcImageFile);
+    const res = await jpostForm(`${API}/broadcasts/`, fd);
+    sendBtn.disabled = false;
+    if (res.ok && res.data.ok) {
+      msg.className = "give-msg is-ok";
+      msg.textContent = `Yuborildi: ${res.data.sent}/${res.data.total} foydalanuvchiga yetkazildi.`;
+      clearBtn.click();
+      loadBcStats();
+    } else {
+      msg.className = "give-msg is-err";
+      msg.textContent = res.data.error || "Xatolik";
+    }
+  });
+
+  histBtn.addEventListener("click", () => renderBroadcastHistory());
+
+  syncFields();
+  loadBcStats();
+}
+
+async function loadBcStats() {
+  const el = document.getElementById("bcStats");
+  if (!el) return;
+  const res = await jget(`${API}/broadcasts/`);
+  const s = res.stats || {};
+  el.innerHTML = `
+    <div class="bc-stats__title">Statistika</div>
+    <div class="bc-stat"><span class="bc-stat__ic">${BC_ICONS.users}</span><span class="bc-stat__label">Jami foydalanuvchilar</span><span class="bc-stat__num">${fmt(s.players)}</span></div>
+    <div class="bc-stat"><span class="bc-stat__ic">${BC_ICONS.userCheck}</span><span class="bc-stat__label">Faol foydalanuvchilar</span><span class="bc-stat__num">${fmt(s.active)}</span></div>
+    <div class="bc-stat"><span class="bc-stat__ic">${BC_ICONS.clock}</span><span class="bc-stat__label">So'nggi 24 soat</span><span class="bc-stat__num">${fmt(s.new_24h)}</span></div>
+    <div class="bc-stat"><span class="bc-stat__ic">${BC_ICONS.checkCircle}</span><span class="bc-stat__label">Xabar yetkazilishi</span><span class="bc-stat__num">${s.delivery_rate}%</span></div>`;
+}
+
+async function renderBroadcastHistory() {
+  main.innerHTML = `
+    <div class="page-head"><div>
+      <div class="page-title page-title--ic">
+        <button class="icon-back" id="bcBack" type="button">${BC_ICONS.back}</button>
+        Yuborilgan xabarlar
+      </div>
+      <div class="page-sub">Oxirgi 50 ta broadcast</div>
+    </div></div>
+    <div id="bcHistBody"><div class="loading">Yuklanmoqda…</div></div>`;
+  document.getElementById("bcBack").addEventListener("click", () => renderBroadcast());
+  const res = await jget(`${API}/broadcasts/`);
+  const rows = res.items || [];
+  const body = document.getElementById("bcHistBody");
+  if (!rows.length) { body.innerHTML = `<div class="loading">Hali xabar yuborilmagan.</div>`; return; }
+  body.innerHTML = `
+    <div class="table-wrap"><div class="table-scroll"><table>
+      <thead><tr><th>Vaqt</th><th>Xabar</th><th>Auditoriya</th><th>Yetkazildi</th><th>Admin</th></tr></thead>
+      <tbody>
+        ${rows.map((b) => `<tr>
+          <td class="cell-muted">${dt(b.created_at)}</td>
+          <td class="bc-hist-cell">
+            ${b.image ? `<img class="bc-hist-thumb" src="${b.image}" alt="" />` : ""}
+            ${b.text ? `<span class="bc-hist-text">${esc(b.text.slice(0, 80))}${b.text.length > 80 ? "…" : ""}</span>` : (b.image ? "" : `<span class="cell-muted">—</span>`)}
+          </td>
+          <td>${b.audience === "active" ? "Faol" : "Barcha"}</td>
+          <td>${fmt(b.delivered)} / ${fmt(b.recipients)}</td>
+          <td class="cell-muted">${esc(b.sent_by || "—")}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table></div></div>`;
+}
+
 async function renderPromos() {
   const cases = await jget(`${API}/cases/`);
   main.innerHTML = `
@@ -764,6 +1030,112 @@ async function loadPromos() {
       "Promokodni o'chirish",
       "Bu promokod butunlay o'chiriladi.",
       async () => { await jdel(`${API}/promos/${b.dataset.del}/`); loadPromos(); }
+    ))
+  );
+}
+
+// ---------- channel subscribe tasks ----------
+const CT_ICONS = {
+  channel: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>`,
+  link: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
+};
+
+async function renderChannelTasks() {
+  main.innerHTML = `
+    <div class="page-head"><div>
+      <div class="page-title page-title--ic"><span class="page-title__ic bc-ic--violet">${CT_ICONS.channel}</span>Kanal topshiriqlari</div>
+      <div class="page-sub">Home sahifada ko'rsatiladigan "kanalga obuna bo'ling" topshiriqlari — birinchisi bajarilgach navbatdagisi ochiladi</div>
+    </div></div>
+
+    <div class="give-box">
+      <div class="give-box__title">Yangi topshiriq qo'shish</div>
+      <div class="give-box__sub">Kanal nomi, havolasi (t.me/...) va sovg'a miqdorini kiriting. Bot kanalga admin qilib qo'shilgan bo'lishi kerak.</div>
+      <div class="give-row" style="margin-top:12px">
+        <input class="admin-input" id="ctName" placeholder="Kanal nomi (masalan SKINRUSH UZ)" />
+        <input class="admin-input" id="ctLink" placeholder="https://t.me/kanal_nomi" />
+        <input class="admin-input" id="ctReward" type="number" min="1" placeholder="Sovg'a (coin)" value="500" />
+        <input class="admin-input" id="ctOrder" type="number" min="0" placeholder="Tartib (ixtiyoriy)" />
+        <button class="admin-btn" id="ctAdd">Qo'shish</button>
+      </div>
+      <div class="give-msg" id="ctMsg"></div>
+    </div>
+
+    <div id="ctBody"><div class="loading">Yuklanmoqda…</div></div>`;
+
+  document.getElementById("ctAdd").addEventListener("click", async () => {
+    const msg = document.getElementById("ctMsg");
+    const res = await jpost(`${API}/channel-tasks/`, {
+      name: document.getElementById("ctName").value.trim(),
+      link: document.getElementById("ctLink").value.trim(),
+      reward: document.getElementById("ctReward").value.trim() || 500,
+      sort_order: document.getElementById("ctOrder").value.trim() || undefined,
+    });
+    if (res.ok && res.data.ok) {
+      msg.className = "give-msg is-ok";
+      msg.textContent = "Qo'shildi!";
+      document.getElementById("ctName").value = "";
+      document.getElementById("ctLink").value = "";
+      document.getElementById("ctReward").value = "500";
+      document.getElementById("ctOrder").value = "";
+      loadChannelTasks();
+    } else {
+      msg.className = "give-msg is-err";
+      msg.textContent = res.data.error || "Xatolik";
+    }
+  });
+  loadChannelTasks();
+}
+
+async function loadChannelTasks() {
+  const body = document.getElementById("ctBody");
+  const rows = await jget(`${API}/channel-tasks/`);
+  if (!rows.length) {
+    body.innerHTML = `<div class="loading">Hali topshiriq qo'shilmagan.</div>`;
+    return;
+  }
+  body.innerHTML = `
+    <div class="table-wrap"><div class="table-scroll"><table>
+      <thead><tr>
+        <th>Tartib</th><th>Nomi</th><th>Havola</th><th>Mukofot</th>
+        <th>Bajarganlar</th><th>Holati</th><th></th>
+      </tr></thead>
+      <tbody>
+        ${rows.map((t) => {
+          const st = !t.is_active
+            ? { label: "O'chirilgan", c: "var(--pink)" }
+            : !t.checkable
+              ? { label: "Havola noto'g'ri", c: "var(--gold)" }
+              : { label: "Faol", c: "var(--green)" };
+          return `<tr>
+            <td class="cell-muted">${t.sort_order}</td>
+            <td class="cell-name">${esc(t.name)}</td>
+            <td><a href="${esc(t.link)}" target="_blank" rel="noopener" class="ct-link">${CT_ICONS.link}<span>${esc(t.link.replace(/^https?:\/\//, ""))}</span></a></td>
+            <td><span class="pct">+${fmt(t.reward)} coin</span></td>
+            <td class="cell-muted">${fmt(t.claims)}</td>
+            <td><span class="status-badge" style="--bc:${st.c}">${st.label}</span></td>
+            <td style="white-space:nowrap">
+              <button class="admin-btn admin-btn--ghost" data-toggle="${t.id}" data-active="${t.is_active}">
+                ${t.is_active ? "To'xtatish" : "Yoqish"}</button>
+              <button class="admin-btn admin-btn--danger" data-del="${t.id}">Olib tashlash</button>
+            </td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table></div></div>`;
+
+  body.querySelectorAll("[data-toggle]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      await jpost(`${API}/channel-tasks/${b.dataset.toggle}/`, {
+        is_active: b.dataset.active !== "true",
+      });
+      loadChannelTasks();
+    })
+  );
+  body.querySelectorAll("[data-del]").forEach((b) =>
+    b.addEventListener("click", () => openConfirm(
+      "Topshiriqni o'chirish",
+      "Bu kanal topshirig'i butunlay o'chiriladi. Bajargan foydalanuvchilar tarixi ham o'chadi.",
+      async () => { await jdel(`${API}/channel-tasks/${b.dataset.del}/`); loadChannelTasks(); }
     ))
   );
 }

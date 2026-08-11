@@ -19,11 +19,12 @@ from rest_framework.response import Response
 
 from .authentication import CsrfExemptSession
 from .models import (
-    AdminAction, Case, CaseItem, CoinPurchase, Drop, FreeCase, OpenRecord,
-    PaymentAdmin, Player, PromoCode, TopUpMessage, TopUpRequest, WithdrawRequest,
+    AdminAction, BroadcastMessage, Case, CaseItem, ChannelTask, ChannelTaskClaim,
+    CoinPurchase, Drop, FreeCase, OpenRecord, PaymentAdmin, Player, PromoCode,
+    TopUpMessage, TopUpRequest, WithdrawRequest,
 )
 from .telegram_bot import (
-    _pay as _credit_topup, notify, notify_topup_admin_reply, notify_withdraw,
+    _pay as _credit_topup, broadcast_to, notify, notify_topup_admin_reply, notify_withdraw,
 )
 
 
@@ -316,6 +317,79 @@ def admin_promo_detail(request, pk):
     p.is_active = not p.is_active
     p.save(update_fields=["is_active"])
     return Response({"ok": True, "row": _promo_row(p)})
+
+
+# ---------- channel subscribe tasks (home-page "topshiriq" card) ----------
+def _channel_task_row(t):
+    return {
+        "id": t.id, "name": t.name, "link": t.link, "reward": t.reward,
+        "sort_order": t.sort_order, "is_active": t.is_active,
+        "checkable": bool(t.channel_username),
+        "claims": t.claims.count(),
+        "created_at": t.created_at.isoformat(),
+    }
+
+
+@api_view(["GET", "POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_channel_tasks(request):
+    if request.method == "GET":
+        return Response([_channel_task_row(t) for t in
+                         ChannelTask.objects.all().prefetch_related("claims")])
+
+    name = (request.data.get("name") or "").strip()[:120]
+    link = (request.data.get("link") or "").strip()[:300]
+    if not name:
+        return Response({"error": "Kanal nomini yozing"}, status=400)
+    if not link.startswith(("https://t.me/", "http://t.me/", "https://telegram.me/")):
+        return Response({"error": "Havola t.me/... ko'rinishida bo'lsin"}, status=400)
+    reward = _num(request.data.get("reward"), 500)
+    if reward <= 0:
+        return Response({"error": "Mukofot 0 dan katta bo'lsin"}, status=400)
+    sort_order = _num(request.data.get("sort_order"),
+                       (ChannelTask.objects.count()))
+
+    t = ChannelTask.objects.create(name=name, link=link, reward=reward, sort_order=sort_order)
+    _log(request, "channel_task_add", f"«{t.name}» — {t.reward} coin")
+    return Response({"ok": True, "row": _channel_task_row(t)})
+
+
+@api_view(["POST", "DELETE"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_channel_task_detail(request, pk):
+    t = ChannelTask.objects.filter(pk=pk).first()
+    if t is None:
+        return Response({"error": "Topilmadi"}, status=404)
+    if request.method == "DELETE":
+        name = t.name
+        t.delete()
+        _log(request, "channel_task_del", f"«{name}»")
+        return Response({"ok": True})
+
+    if "name" in request.data:
+        name = (request.data.get("name") or "").strip()[:120]
+        if not name:
+            return Response({"error": "Kanal nomini yozing"}, status=400)
+        t.name = name
+    if "link" in request.data:
+        link = (request.data.get("link") or "").strip()[:300]
+        if not link.startswith(("https://t.me/", "http://t.me/", "https://telegram.me/")):
+            return Response({"error": "Havola t.me/... ko'rinishida bo'lsin"}, status=400)
+        t.link = link
+    if "reward" in request.data:
+        reward = _num(request.data.get("reward"), t.reward)
+        if reward <= 0:
+            return Response({"error": "Mukofot 0 dan katta bo'lsin"}, status=400)
+        t.reward = reward
+    if "sort_order" in request.data:
+        t.sort_order = _num(request.data.get("sort_order"), t.sort_order)
+    if "is_active" in request.data:
+        t.is_active = bool(request.data.get("is_active"))
+    t.save()
+    _log(request, "channel_task_edit", f"«{t.name}»")
+    return Response({"ok": True, "row": _channel_task_row(t)})
 
 
 # ---------- top-up requests ----------
@@ -887,3 +961,79 @@ def admin_case_item_detail(request, pk):
     it.save()
     _log(request, "skin_edit", f"«{it.name}»")
     return Response({"ok": True, "item": _item_row(it)})
+
+
+# ---------------------------------------------------------------- broadcast
+def _is_image_upload(f):
+    """A light check that an upload is an image — we store it, we don't decode it."""
+    ok_ext = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic")
+    ct = (getattr(f, "content_type", "") or "").lower()
+    name = (getattr(f, "name", "") or "").lower()
+    return ct.startswith("image/") or name.endswith(ok_ext)
+
+
+def _broadcast_row(b):
+    return {
+        "id": b.id,
+        "text": b.text,
+        "image": b.image.url if b.image else None,
+        "audience": b.audience,
+        "recipients": b.recipients,
+        "delivered": b.delivered,
+        "created_at": b.created_at,
+        "sent_by": b.sent_by.username if b.sent_by else None,
+    }
+
+
+@api_view(["GET", "POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_broadcasts(request):
+    """List past broadcasts + live stats, or send a new one."""
+    if request.method == "GET":
+        rows = list(BroadcastMessage.objects.select_related("sent_by")[:50])
+        now = timezone.now()
+        players_total = Player.objects.exclude(telegram_id__isnull=True).count()
+        active_total = Player.objects.filter(
+            last_seen__gte=now - timedelta(days=7)).count()
+        new_24h = Player.objects.filter(created_at__gte=now - timedelta(hours=24)).count()
+        last = rows[0] if rows else None
+        delivery_rate = (round(100 * last.delivered / last.recipients)
+                          if last and last.recipients else 100)
+        return Response({
+            "items": [_broadcast_row(b) for b in rows],
+            "stats": {
+                "players": players_total, "active": active_total,
+                "new_24h": new_24h, "delivery_rate": delivery_rate,
+            },
+        })
+
+    text = (request.data.get("text") or "").strip()[:2000]
+    audience = request.data.get("audience") or BroadcastMessage.AUD_ALL
+    if audience not in (BroadcastMessage.AUD_ALL, BroadcastMessage.AUD_ACTIVE):
+        audience = BroadcastMessage.AUD_ALL
+    image = request.FILES.get("image")
+    if image:
+        if not _is_image_upload(image):
+            return Response({"error": "Faqat rasm yuborish mumkin"}, status=400)
+        if image.size > 8 * 1024 * 1024:
+            return Response({"error": "Rasm juda katta (8MB dan kam)"}, status=400)
+    if not text and not image:
+        return Response({"error": "Xabar matni yoki rasm kerak"}, status=400)
+
+    qs = Player.objects.exclude(telegram_id__isnull=True)
+    if audience == BroadcastMessage.AUD_ACTIVE:
+        qs = qs.filter(last_seen__gte=timezone.now() - timedelta(days=7))
+    ids = list(qs.values_list("telegram_id", flat=True))
+
+    bm = BroadcastMessage.objects.create(
+        text=text, image=image, audience=audience,
+        sent_by=request.user if request.user.is_authenticated else None,
+        recipients=len(ids))
+
+    image_url = request.build_absolute_uri(bm.image.url) if bm.image else None
+    sent, total = broadcast_to(ids, text=text, image_url=image_url)
+    bm.delivered = sent
+    bm.save(update_fields=["delivered"])
+    _log(request, "broadcast", f"{sent}/{total} — {text[:60] or '(rasm)'}")
+    return Response({"ok": True, "sent": sent, "total": total, "item": _broadcast_row(bm)})
