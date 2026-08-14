@@ -7,7 +7,7 @@ from datetime import timedelta
 
 from django.contrib.auth import authenticate, login, logout
 from django.db import transaction
-from django.db.models import Count, Sum
+from django.db.models import Count, F, Sum
 from django.utils import timezone
 from rest_framework.decorators import (
     api_view,
@@ -20,8 +20,9 @@ from rest_framework.response import Response
 from .authentication import CsrfExemptSession
 from .models import (
     AdminAction, BroadcastMessage, Case, CaseItem, ChannelTask, ChannelTaskClaim,
-    CoinPurchase, Drop, FreeCase, OpenRecord, PaymentAdmin, Player, PromoCode,
-    TopUpMessage, TopUpRequest, WithdrawRequest,
+    CoinPurchase, Drop, FreeCase, OpenRecord, PaymentAdmin, Partner, PartnerEarning,
+    PartnerWithdrawRequest, Player, PromoCode, TopUpMessage, TopUpRequest,
+    WithdrawRequest,
 )
 from .telegram_bot import (
     _pay as _credit_topup, broadcast_to, notify, notify_topup_admin_reply, notify_withdraw,
@@ -254,8 +255,11 @@ def _promo_row(p):
         "bonus_percent": p.bonus_percent,
         "case": {"id": p.case_id, "name": p.case.name} if p.case else None,
         "reward": p.reward,
-        "max_uses": p.max_uses, "uses": p.uses, "is_spent": p.is_spent,
+        "max_uses": p.max_uses, "uses": p.uses,
+        "players": p.redemptions.values("player_id").distinct().count(),
+        "is_spent": p.is_spent,
         "is_active": p.is_active,
+        "is_partner": hasattr(p, "partner"),
         "created_at": p.created_at.isoformat(),
     }
 
@@ -390,6 +394,74 @@ def admin_channel_task_detail(request, pk):
     t.save()
     _log(request, "channel_task_edit", f"«{t.name}»")
     return Response({"ok": True, "row": _channel_task_row(t)})
+
+
+# ---------- partner (hamkorlik) program ----------
+def _partner_row(p):
+    pending = next(
+        (w for w in p.withdraw_requests.all() if w.status == PartnerWithdrawRequest.WAITING),
+        None,
+    )
+    return {
+        "id": p.id,
+        "player_id": p.player_id,
+        "player_name": p.player.display_name,
+        "telegram_id": p.player.telegram_id,
+        "code": p.promo.code,
+        "promo_active": p.promo.is_active,
+        "balance": p.balance,
+        "total_earned": p.total_earned,
+        "referred_count": p.earnings.values("referred_id").distinct().count(),
+        "purchases_count": p.earnings.count(),
+        "pending_withdraw": {
+            "id": pending.id, "amount": pending.amount,
+            "created_at": pending.created_at.isoformat(),
+        } if pending else None,
+        "created_at": p.created_at.isoformat(),
+    }
+
+
+@api_view(["GET"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_partners(request):
+    rows = list(Partner.objects.select_related("player", "promo")
+                .prefetch_related("withdraw_requests").order_by("-total_earned"))
+    pending_count = sum(1 for p in rows if any(
+        w.status == PartnerWithdrawRequest.WAITING for w in p.withdraw_requests.all()))
+    return Response({
+        "items": [_partner_row(p) for p in rows],
+        "stats": {
+            "total_partners": len(rows),
+            "pending_withdraws": pending_count,
+            "total_balance": sum(p.balance for p in rows),
+            "total_earned": sum(p.total_earned for p in rows),
+        },
+    })
+
+
+@api_view(["POST"])
+@authentication_classes([CsrfExemptSession])
+@permission_classes([IsAdminUser])
+def admin_partner_withdraw_pay(request, pk):
+    """Mark a payout request as paid by hand (the admin has already sent the
+    money to the partner outside the system) — deducts it from their balance
+    so the "still owed" number stays accurate."""
+    wr = PartnerWithdrawRequest.objects.select_related("partner__player").filter(pk=pk).first()
+    if wr is None:
+        return Response({"error": "Topilmadi"}, status=404)
+    if wr.status == PartnerWithdrawRequest.PAID:
+        return Response({"error": "Allaqachon to'langan"}, status=400)
+    partner_name = wr.partner.player.display_name
+    telegram_id = wr.partner.player.telegram_id
+    with transaction.atomic():
+        Partner.objects.filter(pk=wr.partner_id).update(balance=F("balance") - wr.amount)
+        wr.status = PartnerWithdrawRequest.PAID
+        wr.resolved_at = timezone.now()
+        wr.save(update_fields=["status", "resolved_at"])
+    _log(request, "partner_payout", f"{partner_name} — {wr.amount} so'm")
+    notify(telegram_id, f"✅ {wr.amount:,} so'm hamkorlik puli to'landi!".replace(",", " "))
+    return Response({"ok": True})
 
 
 # ---------- top-up requests ----------

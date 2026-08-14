@@ -115,7 +115,7 @@ const VIEW_TITLES = {
   dashboard: "Dashboard", users: "Foydalanuvchilar", broadcast: "Broadcast",
   withdraws: "Withdraw so'rovlari",
   topups: "To'lov chat", payadmins: "To'lov adminlar", promos: "Promokodlar",
-  channeltasks: "Kanal topshiriqlari", cases: "Keyslar",
+  channeltasks: "Kanal topshiriqlari", cases: "Keyslar", partners: "Hamkorlar",
 };
 function setDrawer(open) { document.getElementById("appView").classList.toggle("drawer-open", open); }
 document.getElementById("drawerToggle").addEventListener("click", () => setDrawer(true));
@@ -137,6 +137,7 @@ function switchView(view) {
   else if (view === "payadmins") renderPayAdmins();
   else if (view === "promos") renderPromos();
   else if (view === "channeltasks") renderChannelTasks();
+  else if (view === "partners") renderPartners();
   else if (view === "cases") renderCases();
   else if (view === "audit") renderAudit();
 }
@@ -987,7 +988,7 @@ async function loadPromos() {
   body.innerHTML = `
     <div class="table-wrap"><div class="table-scroll"><table>
       <thead><tr>
-        <th>Kod</th><th>Turi</th><th>Beradi</th><th>Aktivatsiya</th>
+        <th>Kod</th><th>Turi</th><th>Beradi</th><th>Odamlar</th><th>Ishlatilgan</th>
         <th>Yaratilgan</th><th>Holati</th><th></th>
       </tr></thead>
       <tbody>
@@ -1000,12 +1001,13 @@ async function loadPromos() {
               ? { label: "Limit tugagan", c: "var(--gold)" }
               : { label: "Faol", c: "var(--green)" };
           return `<tr>
-            <td class="cell-name">${esc(p.code)}</td>
+            <td class="cell-name">${esc(p.code)}${p.is_partner ? ' <span class="status-badge" style="--bc:var(--violet)">Hamkor</span>' : ""}</td>
             <td><span class="status-badge" style="--bc:${isCase ? "var(--violet)" : "var(--teal)"}">
               ${isCase ? "Bepul keys" : "Bonus"}</span></td>
             <td>${isCase
                   ? `<span class="cell-name">${esc(p.case ? p.case.name : "— o'chirilgan keys")}</span>`
                   : `<span class="pct">+${p.bonus_percent}%</span>`}</td>
+            <td>${fmt(p.players)}${isCase ? ' <span class="cell-muted">(24s/1)</span>' : ""}</td>
             <td>${fmt(p.uses)}${p.max_uses ? " / " + fmt(p.max_uses) : ' <span class="cell-muted">/ ∞</span>'}</td>
             <td class="cell-muted">${dOnly(p.created_at)}</td>
             <td><span class="status-badge" style="--bc:${st.c}">${st.label}</span></td>
@@ -1136,6 +1138,73 @@ async function loadChannelTasks() {
       "Topshiriqni o'chirish",
       "Bu kanal topshirig'i butunlay o'chiriladi. Bajargan foydalanuvchilar tarixi ham o'chadi.",
       async () => { await jdel(`${API}/channel-tasks/${b.dataset.del}/`); loadChannelTasks(); }
+    ))
+  );
+}
+
+// ---------- partners (hamkorlik program) ----------
+async function renderPartners() {
+  main.innerHTML = `
+    <div class="page-head"><div>
+      <div class="page-title page-title--ic"><span class="page-title__ic bc-ic--violet">${BC_ICONS.users}</span>Hamkorlar</div>
+      <div class="page-sub">Promokod orqali komissiya ishlagan foydalanuvchilar — to'liq balans va so'rovlar jurnali</div>
+    </div></div>
+    <div class="bc-stats" id="ptStats"><div class="loading">Yuklanmoqda…</div></div>
+    <div id="ptBody" style="margin-top:16px"><div class="loading">Yuklanmoqda…</div></div>`;
+  loadPartners();
+}
+
+async function loadPartners() {
+  const res = await jget(`${API}/partners/`);
+  const s = res.stats || {};
+  document.getElementById("ptStats").innerHTML = `
+    <div class="bc-stats__title">Umumiy statistika</div>
+    <div class="bc-stat"><span class="bc-stat__ic">${BC_ICONS.users}</span><span class="bc-stat__label">Jami hamkorlar</span><span class="bc-stat__num">${fmt(s.total_partners)}</span></div>
+    <div class="bc-stat"><span class="bc-stat__ic">${BC_ICONS.clock}</span><span class="bc-stat__label">Kutilayotgan so'rovlar</span><span class="bc-stat__num">${fmt(s.pending_withdraws)}</span></div>
+    <div class="bc-stat"><span class="bc-stat__ic">${BC_ICONS.checkCircle}</span><span class="bc-stat__label">Jami balans (qarz)</span><span class="bc-stat__num">${fmt(s.total_balance)} so'm</span></div>
+    <div class="bc-stat"><span class="bc-stat__ic">${BC_ICONS.send}</span><span class="bc-stat__label">Jami ishlangan</span><span class="bc-stat__num">${fmt(s.total_earned)} so'm</span></div>`;
+
+  const rows = res.items || [];
+  const body = document.getElementById("ptBody");
+  if (!rows.length) {
+    body.innerHTML = `<div class="loading">Hali hamkor yo'q.</div>`;
+    return;
+  }
+  body.innerHTML = `
+    <div class="table-wrap"><div class="table-scroll"><table>
+      <thead><tr>
+        <th>Hamkor</th><th>Promo kod</th><th>Jalb qilgan</th><th>To'lovlar</th>
+        <th>Balans</th><th>Jami ishlagan</th><th>So'rov</th><th></th>
+      </tr></thead>
+      <tbody>
+        ${rows.map((p) => `<tr>
+          <td class="cell-name">${esc(p.player_name)}</td>
+          <td>${esc(p.code)}${!p.promo_active ? ' <span class="status-badge" style="--bc:var(--pink)">O\'chirilgan</span>' : ""}</td>
+          <td>${fmt(p.referred_count)}</td>
+          <td>${fmt(p.purchases_count)}</td>
+          <td><span class="pct">${fmt(p.balance)} so'm</span></td>
+          <td class="cell-muted">${fmt(p.total_earned)} so'm</td>
+          <td>${p.pending_withdraw
+              ? `<span class="status-badge" style="--bc:var(--gold)">${fmt(p.pending_withdraw.amount)} so'm</span>`
+              : `<span class="cell-muted">—</span>`}</td>
+          <td style="white-space:nowrap">
+            ${p.pending_withdraw
+              ? `<button class="admin-btn" data-pay="${p.pending_withdraw.id}">To'landi deb belgilash</button>`
+              : ""}
+          </td>
+        </tr>`).join("")}
+      </tbody>
+    </table></div></div>`;
+
+  body.querySelectorAll("[data-pay]").forEach((b) =>
+    b.addEventListener("click", () => openConfirm(
+      "To'lovni tasdiqlash",
+      "Pulni hamkorga qo'lda o'tkazib bo'ldingizmi? Tasdiqlansa uning balansidan shu summa ayiriladi.",
+      async () => {
+        const res = await jpost(`${API}/partner-withdraws/${b.dataset.pay}/pay/`, {});
+        if (!res.ok || !res.data.ok) { alert(res.data.error || "Xatolik"); return; }
+        loadPartners();
+      }
     ))
   );
 }
@@ -1500,6 +1569,8 @@ const AUDIT_LABEL = {
   take_skin: "🗑 Skin oldi", free_case: "📦 Bepul keys", message: "✉️ Xabar",
   broadcast: "📣 Broadcast", case_add: "➕ Keys", case_del: "🗑 Keys o'chirdi",
   skin_add: "➕ Skin", skin_edit: "✏️ Skin", skin_del: "🗑 Skin",
+  channel_task_add: "➕ Kanal topshirig'i", channel_task_edit: "✏️ Kanal topshirig'i",
+  channel_task_del: "🗑 Kanal topshirig'i", partner_payout: "🤝 Hamkor to'lovi",
 };
 async function renderAudit() {
   main.innerHTML = `

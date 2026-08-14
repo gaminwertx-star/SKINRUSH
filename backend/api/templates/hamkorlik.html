@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% load skinrush_extras %}
+{% block title %}Hamkorlik — SKINRUSH{% endblock %}
+{% block content %}
+
+<section class="ref">
+  <div class="ref-hero">
+    <div class="ref-hero__glow"></div>
+    <h1 class="ref-hero__title">Hamkorlik dasturi</h1>
+    <p class="ref-hero__sub">
+      O'zingiz uchun <b class="ref-gold">{{ bonus_percent }}%</b> chegirmali promokod yarating —
+      uni ishlatgan har bir do'stingizning to'lovidan <b class="ref-gold">{{ commission_percent }}%</b>
+      naqd pul (so'm) sizga tushadi.
+    </p>
+  </div>
+
+  {% if not is_partner %}
+    <!-- create form -->
+    <div class="ref-card">
+      <div class="ref-card__label">Promokod yaratish</div>
+      <p class="pr-intro">
+        6 xonali raqamli kod o'ylab toping (masalan <b>482913</b>) — bu sizning shaxsiy
+        promokodingiz bo'ladi. Do'stlaringiz balans to'ldirishda shu kodni kiritsa,
+        ular {{ bonus_percent }}% ko'proq coin oladi, siz esa ularning to'lovidan
+        {{ commission_percent }}% ni umrbod olib turasiz.
+      </p>
+      <form method="post" action="{% url 'hamkorlik-create' %}" class="pr-create-form">
+        {% csrf_token %}
+        <input class="pr-code-input" type="text" name="code" inputmode="numeric"
+               pattern="\d{6}" maxlength="6" placeholder="482913" required />
+        <button type="submit" class="ref-btn ref-btn--main">Hamkor bo'lish</button>
+      </form>
+    </div>
+  {% else %}
+    <!-- code + copy -->
+    <div class="ref-card">
+      <div class="ref-card__label">Sizning promokodingiz</div>
+      <div class="ref-link" id="prCode" data-code="{{ P.code }}">{{ P.code }}</div>
+      <div class="ref-actions">
+        <button type="button" class="ref-btn ref-btn--main" id="prCopy">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Nusxa olish
+        </button>
+      </div>
+      <div class="ref-code">{{ P.bonus_percent }}% bonus beradi · sizga {{ P.commission_percent }}% komissiya</div>
+      <div class="ref-note" id="prNote" hidden></div>
+    </div>
+
+    <!-- stats -->
+    <div class="ref-stats">
+      <div class="ref-stat"><div class="ref-stat__num">{{ P.referred_count|fmt }}</div><div class="ref-stat__lbl">Odam jalb qildi</div></div>
+      <div class="ref-stat"><div class="ref-stat__num">{{ P.purchases_count|fmt }}</div><div class="ref-stat__lbl">To'lovlar soni</div></div>
+      <div class="ref-stat"><div class="ref-stat__num ref-gold">{{ P.total_earned|fmt }}</div><div class="ref-stat__lbl">Jami ishlangan (so'm)</div></div>
+    </div>
+
+    <!-- balance + payout -->
+    <div class="ref-card pr-balance">
+      <div class="ref-card__label">Hamkor balansi</div>
+      <div class="pr-balance__num">{{ P.balance|fmt }} <span>so'm</span></div>
+
+      {% if P.pending_withdraw %}
+        <div class="pr-payout-note is-waiting">
+          So'rovingiz kutilmoqda — {{ P.pending_withdraw.amount|fmt }} so'm.
+          Tezlashtirish uchun <a href="https://t.me/{{ P.contact_username }}" target="_blank" rel="noopener">@{{ P.contact_username }}</a> ga yozing.
+        </div>
+      {% elif P.can_request %}
+        <form method="post" action="{% url 'hamkorlik-withdraw' %}">
+          {% csrf_token %}
+          <button type="submit" class="ref-btn ref-btn--main pr-withdraw-btn">Pul chiqarish so'rovi yuborish</button>
+        </form>
+        <p class="pr-intro pr-intro--small">
+          So'rov yuborgach, to'lovni tezlashtirish uchun
+          <a href="https://t.me/{{ P.contact_username }}" target="_blank" rel="noopener">@{{ P.contact_username }}</a>
+          ga murojaat qiling.
+        </p>
+      {% else %}
+        <div class="pr-progress">
+          <div class="pr-progress__bar"><div class="pr-progress__fill" style="width:{{ P.progress_pct }}%"></div></div>
+          <div class="pr-progress__lbl">Chiqarish uchun kamida {{ payout_min|fmt }} so'm kerak</div>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- earnings log -->
+    <div class="ref-card">
+      <div class="ref-card__label">To'lovlar tarixi ({{ P.purchases_count|fmt }})</div>
+      {% if P.earnings %}
+        <div class="pr-earnings">
+          {% for e in P.earnings %}
+            <div class="pr-earn-row">
+              <span class="pr-earn-row__name">{{ e.referred }}</span>
+              <span class="pr-earn-row__sum">{{ e.amount_sum|fmt }} so'm</span>
+              <span class="pr-earn-row__com">+{{ e.commission|fmt }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="ref-empty">Hali hech kim promokodingizni ishlatmadi.</div>
+      {% endif %}
+    </div>
+  {% endif %}
+</section>
+
+{% if is_partner %}
+<script>
+  (function () {
+    var code = document.getElementById('prCode').getAttribute('data-code');
+    var note = document.getElementById('prNote');
+    function say(t) { note.hidden = false; note.textContent = t; setTimeout(function () { note.hidden = true; }, 2500); }
+    document.getElementById('prCopy').addEventListener('click', function () {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code).then(function () { say('Kod nusxa olindi ✓'); })
+          .catch(fallback);
+      } else { fallback(); }
+      function fallback() {
+        var ta = document.createElement('textarea'); ta.value = code; document.body.appendChild(ta);
+        ta.select(); try { document.execCommand('copy'); } catch (e) {} ta.remove(); say('Kod nusxa olindi ✓');
+      }
+    });
+  })();
+</script>
+{% endif %}
+{% endblock %}

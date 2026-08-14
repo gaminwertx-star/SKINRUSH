@@ -384,15 +384,16 @@ class PaymentAdmin(models.Model):
 
 
 class PromoCode(models.Model):
-    """A code an admin hands out. Two kinds, both fully admin-defined:
+    """A code an admin (or, for a `bonus` code, a partner) hands out. Two
+    kinds:
 
-    `bonus` — extra coins on a top-up, by whatever percentage they type
-    `case`  — one free opening of a case they choose
+    `bonus` — extra coins on a top-up, by whatever percentage they type.
+              One-time per player, forever.
+    `case`  — one free opening of a case they choose. The same player may
+              redeem it again every 24 hours — see PromoRedemption.
 
-    `max_uses` is the activation limit: how many players may redeem it at all
-    (0 = no limit). Redemption is one per player either way — see
-    PromoRedemption — so "10 activations" means ten different people, not one
-    person ten times.
+    `max_uses` is the activation limit: how many redemption events are
+    allowed in total before the code is spent (0 = no limit).
     """
 
     KIND_BONUS, KIND_CASE = "bonus", "case"
@@ -430,8 +431,11 @@ class PromoCode(models.Model):
 
 
 class PromoRedemption(models.Model):
-    """Who has already used which code. The unique pair is the rule itself: one
-    player can never redeem the same code twice, whatever the kind."""
+    """Who has used which code, and when. `bonus`-kind codes stay one-time
+    forever for a given player (enforced in pages._promo_error/_redeem);
+    `case`-kind ("free keys") codes may be reused by the same player every
+    24 hours, so there is no DB-level uniqueness here — the cooldown is
+    checked against the most recent row's `created_at` instead."""
 
     promo = models.ForeignKey(PromoCode, on_delete=models.CASCADE,
                               related_name="redemptions")
@@ -441,10 +445,6 @@ class PromoRedemption(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
-        constraints = [
-            models.UniqueConstraint(fields=["promo", "player"],
-                                    name="uniq_promo_per_player"),
-        ]
 
     def __str__(self):
         return f"{self.promo.code} · {self.player}"
@@ -609,3 +609,63 @@ class ReferralEarning(models.Model):
 
     def __str__(self):
         return f"{self.referrer} +{self.amount} ({self.kind})"
+
+
+class Partner(models.Model):
+    """A player who created their own promo code and earns a cash commission
+    (real so'm, not coins) every time someone tops up using it. See
+    `partner.py` for the create / credit / stats / withdraw logic.
+
+    `balance` is what's still owed and withdrawable; `total_earned` is a
+    lifetime counter that never decreases (a paid-out withdrawal only
+    lowers `balance`)."""
+
+    player = models.OneToOneField(Player, on_delete=models.CASCADE, related_name="partner")
+    promo = models.OneToOneField(PromoCode, on_delete=models.CASCADE, related_name="partner")
+    balance = models.BigIntegerField(default=0)
+    total_earned = models.BigIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.player} · {self.promo.code}"
+
+
+class PartnerEarning(models.Model):
+    """One commission event: `referred` paid `amount_sum` so'm through
+    `partner`'s code and `partner` was credited `commission` so'm of it.
+    `topup` is OneToOne so a single top-up can only ever pay commission once,
+    even if the crediting call somehow runs twice."""
+
+    partner = models.ForeignKey(Partner, on_delete=models.CASCADE, related_name="earnings")
+    referred = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="partner_purchases")
+    topup = models.OneToOneField(TopUpRequest, on_delete=models.CASCADE, related_name="partner_earning")
+    amount_sum = models.BigIntegerField()
+    commission = models.BigIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.partner} +{self.commission} so'm"
+
+
+class PartnerWithdrawRequest(models.Model):
+    """A partner asking to be paid their commission balance out manually.
+    There is no automated payout — the admin pays by hand and marks this
+    PAID here, which is what the admin panel's "Hamkorlar" log is built on."""
+
+    WAITING, PAID = "waiting", "paid"
+    STATUSES = [(WAITING, "Kutilmoqda"), (PAID, "To'landi")]
+
+    partner = models.ForeignKey(Partner, on_delete=models.CASCADE, related_name="withdraw_requests")
+    amount = models.BigIntegerField()
+    status = models.CharField(max_length=10, choices=STATUSES, default=WAITING, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.partner} — {self.amount} so'm ({self.status})"

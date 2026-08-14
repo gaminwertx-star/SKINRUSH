@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css?v=59" />
-  <link rel="stylesheet" href="/ssr.css?v=57" />
+  <link rel="stylesheet" href="/ssr.css?v=58" />
   <link rel="stylesheet" href="/polish.css?v=22" />
 </head>
 <body>
@@ -92,6 +92,7 @@
       <a class="nav__item {% if ACTIVE == 'dokon' %}is-active{% endif %}" href="{% url 'dokon' %}">{{ S.nav_dokon }}</a>
       <a class="nav__item {% if ACTIVE == 'inventar' %}is-active{% endif %}" href="{% url 'inventory' %}">{{ S.nav_inventar }}</a>
       <a class="nav__item {% if ACTIVE == 'dostlar' %}is-active{% endif %}" href="{% url 'dostlar' %}">{{ S.nav_dostlar }}</a>
+      <a class="nav__item {% if ACTIVE == 'hamkorlik' %}is-active{% endif %}" href="{% url 'hamkorlik' %}">{{ S.nav_hamkorlik }}</a>
     </div>
   </nav>
 
@@ -213,6 +214,9 @@
         </a>
         <a class="hdr-menu__item {% if ACTIVE == 'dostlar' %}is-active{% endif %}" href="{% url 'dostlar' %}">
           <span class="hdr-menu__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Friends
+        </a>
+        <a class="hdr-menu__item {% if ACTIVE == 'hamkorlik' %}is-active{% endif %}" href="{% url 'hamkorlik' %}">
+          <span class="hdr-menu__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Hamkorlik
         </a>
         <a class="hdr-menu__item {% if ACTIVE == 'promocode' %}is-active{% endif %}" href="{% url 'promocode' %}">
           <span class="hdr-menu__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.1" fill="currentColor" stroke="none"/></svg></span>Promocode

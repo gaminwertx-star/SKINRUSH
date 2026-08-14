@@ -325,6 +325,12 @@ def _pay(req):
         referral.topup_share(p, fresh.coins)
     except Exception:
         pass
+    # partner program: pay a 10% cash commission if a partner's code was used
+    try:
+        from . import partner
+        partner.credit_topup(fresh)
+    except Exception:
+        pass
     return None
 
 

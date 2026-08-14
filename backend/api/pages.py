@@ -13,7 +13,7 @@ from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.models import User
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.db.models import F, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -712,12 +712,28 @@ def _promo_error(promo, player):
 
     One place, because the top-up form and the redeem page have to agree; a code
     that looks good on one and is refused by the other is worse than no code.
+
+    `bonus` codes stay one-time forever for a given player. `case` ("free
+    keys") codes may be reused by the same player every 24 hours.
     """
     if promo is None:
         return "Bunday promokod yo'q"
     if promo.is_spent:
         return "Bu promokod limiti tugagan"
-    if player and PromoRedemption.objects.filter(promo=promo, player=player).exists():
+    if not player:
+        return None
+    if promo.kind == PromoCode.KIND_CASE:
+        last = (PromoRedemption.objects.filter(promo=promo, player=player)
+                .order_by("-created_at").first())
+        if last:
+            wait_until = last.created_at + timedelta(hours=24)
+            if wait_until > timezone.now():
+                left = wait_until - timezone.now()
+                h, rem = divmod(int(left.total_seconds()), 3600)
+                m = rem // 60
+                return f"Bu promokodni {h} soat {m} daqiqadan keyin qayta ishlatishingiz mumkin"
+        return None
+    if PromoRedemption.objects.filter(promo=promo, player=player).exists():
         return "Siz bu promokodni allaqachon ishlatgansiz"
     return None
 
@@ -725,18 +741,16 @@ def _promo_error(promo, player):
 def _redeem(promo, player):
     """Book `player`'s use of `promo`. Returns an error string, or None.
 
-    The unique constraint is the real guard: two taps racing each other both
-    pass the checks above, and only one survives the insert.
+    The promo row lock (select_for_update below) is the real guard against
+    two taps racing each other, now that redemption isn't backed by a DB
+    uniqueness constraint (case-kind codes are meant to be reused).
     """
     with transaction.atomic():
         fresh = PromoCode.objects.select_for_update().get(pk=promo.pk)
         err = _promo_error(fresh, player)
         if err:
             return err
-        try:
-            PromoRedemption.objects.create(promo=fresh, player=player)
-        except IntegrityError:
-            return "Siz bu promokodni allaqachon ishlatgansiz"
+        PromoRedemption.objects.create(promo=fresh, player=player)
         PromoCode.objects.filter(pk=fresh.pk).update(uses=F("uses") + 1)
         if fresh.kind == PromoCode.KIND_CASE and fresh.case_id:
             FreeCase.objects.create(player=player, case=fresh.case, promo=fresh)
@@ -1521,6 +1535,59 @@ def dostlar(request):
         "board": referral.leaderboard(),
         "me_id": player.id,
     })
+
+
+def hamkorlik(request):
+    """The partner program page: intro + create form if the player isn't a
+    partner yet, or their dashboard (code, stats, earnings log, payout) if
+    they are."""
+    player = current_player(request)
+    if not player:
+        messages.error(request, "Hamkor bo'lish uchun hisobingizga kiring")
+        return redirect("home")
+    from . import partner as partner_mod
+    p = getattr(player, "partner", None)
+    return render(request, "hamkorlik.html", {
+        "ACTIVE": "hamkorlik",
+        "is_partner": bool(p),
+        "P": partner_mod.stats(p) if p else None,
+        "bonus_percent": partner_mod.BONUS_PERCENT,
+        "commission_percent": partner_mod.COMMISSION_PERCENT,
+        "payout_min": partner_mod.PAYOUT_MIN,
+    })
+
+
+@require_POST
+def hamkorlik_create(request):
+    player = current_player(request)
+    if not player:
+        messages.error(request, "Hamkor bo'lish uchun hisobingizga kiring")
+        return redirect("home")
+    from . import partner as partner_mod
+    _, err = partner_mod.create(player, request.POST.get("code"))
+    if err:
+        messages.error(request, err)
+    else:
+        messages.success(request, "Tabriklaymiz! Endi siz hamkorsiz — promokodingiz tayyor.")
+    return redirect("hamkorlik")
+
+
+@require_POST
+def hamkorlik_withdraw(request):
+    player = current_player(request)
+    p = getattr(player, "partner", None) if player else None
+    if not p:
+        return redirect("hamkorlik")
+    from . import partner as partner_mod
+    _, err = partner_mod.request_withdraw(p)
+    if err:
+        messages.error(request, err)
+    else:
+        messages.success(
+            request,
+            f"So'rov yuborildi! To'lovni tezlashtirish uchun "
+            f"@{partner_mod.CONTACT_USERNAME} ga yozing.")
+    return redirect("hamkorlik")
 
 
 
